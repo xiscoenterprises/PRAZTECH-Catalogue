@@ -134,6 +134,11 @@ export const Footer: React.FC = () => {
                   Cookie policy
                 </Link>
               </li>
+              <li>
+                <Link to="/executive" className="text-[#dcd5e4] hover:text-white transition-colors">
+                  Executive portal
+                </Link>
+              </li>
             </ul>
           </div>
 
@@ -192,6 +197,8 @@ export const Footer: React.FC = () => {
             <Link to="/cookies" className="hover:text-white transition-colors">Cookie Policy</Link>
             <span>•</span>
             <Link to="/refund-policy" className="hover:text-white transition-colors">Refund Policy</Link>
+            <span>•</span>
+            <Link to="/executive" className="hover:text-white transition-colors">Executive Portal</Link>
             <span>•</span>
             <button
               type="button"
