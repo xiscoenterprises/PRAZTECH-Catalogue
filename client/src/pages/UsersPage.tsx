@@ -383,7 +383,13 @@ export const UsersPage: React.FC = () => {
           headers
         });
         if (res.ok) {
-          const data = await res.json();
+          let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        setErrorMsg(`Authentication server returned status ${res.status}. Please check server deployment.`);
+        return;
+      }
           if (data.authenticated && isMounted) {
             setIsAuthenticated(true);
           }
@@ -426,7 +432,13 @@ export const UsersPage: React.FC = () => {
         body: JSON.stringify({ password: passwordInput })
       });
 
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        setErrorMsg(`Authentication server returned status ${res.status}. Please check server deployment.`);
+        return;
+      }
       if (res.ok && data.success) {
         if (data.token) {
           setAdminToken(data.token);

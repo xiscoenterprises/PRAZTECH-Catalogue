@@ -88,23 +88,25 @@ app.use('/api', apiLimiter);
 // Serve static images/placeholders
 app.use('/images', express.static(path.join(__dirname, '../../client/public/images')));
 
-// API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/categories', categoryRoutes);
-app.use('/api/enquiries', enquiryRoutes);
-app.use('/api/customers', customerRoutes);
-app.use('/api/admin/export', exportRoutes);
-app.use('/api/contact', contactRoutes);
+// API Routes (supports both direct and /api prefixed routes for Vercel services compatibility)
+['/api/auth', '/auth'].forEach(p => app.use(p, authRoutes));
+['/api/products', '/products'].forEach(p => app.use(p, productRoutes));
+['/api/categories', '/categories'].forEach(p => app.use(p, categoryRoutes));
+['/api/enquiries', '/enquiries'].forEach(p => app.use(p, enquiryRoutes));
+['/api/customers', '/customers'].forEach(p => app.use(p, customerRoutes));
+['/api/admin/export', '/admin/export'].forEach(p => app.use(p, exportRoutes));
+['/api/contact', '/contact'].forEach(p => app.use(p, contactRoutes));
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    service: 'PRAZTECH® Engineering B2B Catalogue API',
-    database: getDBStatus() ? 'connected (MongoDB Atlas)' : 'local JSON fallback',
-    environment: process.env.NODE_ENV || 'development'
+['/api/health', '/health'].forEach(p => {
+  app.get(p, (req, res) => {
+    res.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      service: 'PRAZTECH® Engineering B2B Catalogue API',
+      database: getDBStatus() ? 'connected (MongoDB Atlas)' : 'local JSON fallback',
+      environment: process.env.NODE_ENV || 'development'
+    });
   });
 });
 
