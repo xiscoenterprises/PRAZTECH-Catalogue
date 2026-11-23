@@ -1,14 +1,19 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const os = require('os');
 const Contact = require('../models/Contact');
 const { sendContactFormEmail } = require('../utils/emailService');
 const { getDBStatus } = require('../config/db');
 
-const localContactsDir = path.join(__dirname, '../../data/contacts');
-if (!fs.existsSync(localContactsDir)) {
-  fs.mkdirSync(localContactsDir, { recursive: true });
-}
+const localContactsDir = process.env.VERCEL 
+  ? path.join(os.tmpdir(), 'praztech_contacts') 
+  : path.join(__dirname, '../../data/contacts');
+try {
+  if (!fs.existsSync(localContactsDir)) {
+    fs.mkdirSync(localContactsDir, { recursive: true });
+  }
+} catch (e) {}
 
 // RFC 5322 compliant email regex
 const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;

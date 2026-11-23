@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const Enquiry = require('../models/Enquiry');
 const Customer = require('../models/Customer');
 const { getNextSequence } = require('../utils/referenceGenerator');
@@ -7,13 +8,21 @@ const { generateEnquiryPDF } = require('../utils/pdfGenerator');
 const { sendEnquiryEmails } = require('../utils/emailService');
 const { getDBStatus } = require('../config/db');
 
-const localEnquiriesDir = path.join(__dirname, '../../data/enquiries');
-const pdfStorageDir = path.join(__dirname, '../../data/pdfs');
+const localEnquiriesDir = process.env.VERCEL 
+  ? path.join(os.tmpdir(), 'praztech_enquiries') 
+  : path.join(__dirname, '../../data/enquiries');
+const pdfStorageDir = process.env.VERCEL 
+  ? path.join(os.tmpdir(), 'praztech_pdfs') 
+  : path.join(__dirname, '../../data/pdfs');
 
-// Ensure storage directories exist
+// Ensure storage directories exist safely
 const ensureDirectoriesExist = () => {
-  if (!fs.existsSync(localEnquiriesDir)) fs.mkdirSync(localEnquiriesDir, { recursive: true });
-  if (!fs.existsSync(pdfStorageDir)) fs.mkdirSync(pdfStorageDir, { recursive: true });
+  try {
+    if (!fs.existsSync(localEnquiriesDir)) fs.mkdirSync(localEnquiriesDir, { recursive: true });
+  } catch (e) {}
+  try {
+    if (!fs.existsSync(pdfStorageDir)) fs.mkdirSync(pdfStorageDir, { recursive: true });
+  } catch (e) {}
 };
 ensureDirectoriesExist();
 

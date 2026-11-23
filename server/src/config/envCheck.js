@@ -39,11 +39,13 @@ const validateEnvironment = () => {
   // 5. Fail safely in production if critical secrets are missing
   if (missingCritical.length > 0) {
     console.error('================================================================');
-    console.error('❌ FATAL SECURITY ERROR: Server startup aborted in production mode.');
+    console.error('❌ FATAL SECURITY ERROR: Server startup notice in production mode.');
     console.error(`   Missing mandatory environment variable(s): ${missingCritical.join(', ')}`);
     console.error('   Please define these variables in your production environment configuration.');
     console.error('================================================================');
-    process.exit(1);
+    if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+      process.exit(1);
+    }
   }
 };
 

@@ -11,9 +11,13 @@ const clientProductsFile = path.resolve(__dirname, '../../../client/src/data/pro
 const clientImagesDir = path.resolve(__dirname, '../../../client/public/images/products');
 const rootImagesDir = path.resolve(__dirname, '../../../product_images');
 
-// Ensure directories exist
+// Ensure directories exist safely (non-blocking for read-only serverless filesystems)
 [clientImagesDir, rootImagesDir].forEach(dir => {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  try {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  } catch (err) {
+    // Gracefully ignore in read-only serverless environments like Vercel
+  }
 });
 
 const ALLOWED_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
