@@ -56,7 +56,7 @@ const generateEnquiryPDF = async (enquiryData, outputPath) => {
       doc.text('Asaf Ali Rd, Delhi, 110002', 330, 48, { align: 'right', width: 225 });
       doc.text(`Email: ${process.env.BUSINESS_EMAIL || 'xiscoenterprises@gmail.com'}`, 330, 60, { align: 'right', width: 225 });
       doc.text(`Phone: ${process.env.BUSINESS_PHONE || '+91 8744020102'}`, 330, 72, { align: 'right', width: 225 });
-      doc.text(`Web: ${process.env.BUSINESS_WEBSITE || 'www.praztech.com'}`, 330, 84, { align: 'right', width: 225 });
+      doc.text(`Web: ${process.env.BUSINESS_WEBSITE || 'www.praztechtools.com'}`, 330, 84, { align: 'right', width: 225 });
 
       doc.moveTo(40, 110).lineTo(555, 110).strokeColor(brandAccent).lineWidth(1.5).stroke();
 
@@ -280,7 +280,7 @@ const generateEnquiryPDF = async (enquiryData, outputPath) => {
       // --- FOOTER ---
       doc.fontSize(7).fillColor('#999999');
       doc.text(
-        'PRAZTECH® Engineering • Precision-Engineered Tools • Generated electronically via PRAZTECH® Catalogue System',
+        'PRAZTECH® Engineering • Precision-Engineered Tools • Website: www.praztechtools.com • Generated electronically via PRAZTECH® Catalogue System',
         40, 790, { align: 'center', width: 515 }
       );
 

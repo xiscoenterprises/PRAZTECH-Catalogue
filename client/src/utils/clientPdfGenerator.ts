@@ -49,7 +49,7 @@ export const generateClientSideEnquiryPDF = (
   doc.text('Asaf Ali Rd, Delhi, 110002, India', 210 - startX, 15, { align: 'right' });
   doc.text('Email: xiscoenterprises@gmail.com', 210 - startX, 19.5, { align: 'right' });
   doc.text('Phone: +91 8744020102', 210 - startX, 24, { align: 'right' });
-  doc.text('Web: https://praztech.com', 210 - startX, 28.5, { align: 'right' });
+  doc.text('Web: https://www.praztechtools.com', 210 - startX, 28.5, { align: 'right' });
 
   // Header Divider Line
   doc.setDrawColor(brandAccent[0], brandAccent[1], brandAccent[2]);
@@ -253,7 +253,7 @@ export const generateClientSideEnquiryPDF = (
   doc.setFontSize(7.5);
   doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
   doc.text(
-    'This is an official computer-generated quotation request summary issued by PRAZTECH® Engineering. Formal pricing, blueprint assessments, and freight lead times will be provided by sales engineers within 24 business hours.',
+    'This is an official computer-generated quotation request summary issued by PRAZTECH® Engineering. Formal pricing, blueprint assessments, and freight lead times will be provided by sales engineers within 24 business hours. • Official Website: www.praztechtools.com',
     105,
     283,
     { align: 'center', maxWidth: contentWidth }
@@ -275,6 +275,7 @@ export interface QuotationLineItem {
   discountPercent: number;
   gstRate: number;
   lineTotal: number;
+  image?: string;
 }
 
 export interface QuotationDetails {
@@ -314,6 +315,44 @@ export interface QuotationDetails {
   };
   authorizedSignatory?: string;
 }
+
+const imageCache = new Map<string, string>();
+
+/**
+ * Loads an image URL and converts it to a base64 JPEG Data URL for reliable embedding in jsPDF.
+ */
+export const loadBase64Image = async (url: string): Promise<string | null> => {
+  if (!url || typeof window === 'undefined') return null;
+  if (url.startsWith('data:image/')) return url;
+  if (imageCache.has(url)) return imageCache.get(url)!;
+
+  return new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width || 120;
+        canvas.height = img.naturalHeight || img.height || 120;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(null);
+          return;
+        }
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        imageCache.set(url, dataUrl);
+        resolve(dataUrl);
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+};
 
 export function amountToWords(num: number, currency: string = 'INR'): string {
   if (!num || isNaN(num) || num <= 0) return 'Zero Only';
@@ -368,9 +407,9 @@ export function amountToWords(num: number, currency: string = 'INR'): string {
 
 /**
  * Generates an official PRAZTECH® Engineering Commercial Quotation PDF client-side
- * with formal pricing, itemized discounts, tax calculations, bank details, and terms.
+ * with formal pricing, product photos, itemized discounts, tax calculations, bank details, and website URL.
  */
-export const generateClientSideQuotationPDF = (quote: QuotationDetails): void => {
+export const generateClientSideQuotationPDF = async (quote: QuotationDetails): Promise<void> => {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -386,24 +425,52 @@ export const generateClientSideQuotationPDF = (quote: QuotationDetails): void =>
 
   const startX = 14;
   const contentWidth = 182; // 210 - 28
-  const currencySym = quote.currencySymbol || '₹';
+
+  // Safe currency symbol representation:
+  // jsPDF standard fonts only support Latin-1 / WinAnsi.
+  // The unicode Rupee symbol '₹' (U+20B9) corrupts to '¹' (0xB9) in WinAnsi.
+  // We use 'Rs. ' for INR to ensure 100% clean, professional rendering without character artifacts.
+  const isINR = quote.currency === 'INR' || quote.currencySymbol === '₹';
+  const currencySym = isINR ? 'Rs. ' : (quote.currencySymbol || '$ ');
+
+  // Pre-load official company logo and all product photos asynchronously
+  const [logoData, ...itemImages] = await Promise.all([
+    loadBase64Image('/images/logo-black.png'),
+    ...quote.items.map(it => it.image ? loadBase64Image(it.image) : Promise.resolve(null))
+  ]);
 
   // 1. Header Banner
-  doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text('PRAZTECH® ENGINEERING', startX, 17);
+  if (logoData) {
+    try {
+      doc.addImage(logoData, 'PNG', startX, 10, 48, 14);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+      doc.text('Automotive Valve Rebuilding & Precision Tooling Manufacturer', startX, 28);
+    } catch {
+      doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text('PRAZTECH® ENGINEERING', startX, 17);
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text('Automotive Valve Rebuilding & Precision Tooling Manufacturer', startX, 22);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+      doc.text('Automotive Valve Rebuilding & Precision Tooling Manufacturer', startX, 23);
+    }
+  } else {
+    doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.text('PRAZTECH® ENGINEERING', startX, 17);
 
-  doc.setFontSize(7.5);
-  doc.setTextColor(brandAccent[0], brandAccent[1], brandAccent[2]);
-  doc.text('ISO 9001:2015 Compliant Tooling Standards • Global Export Quality', startX, 26.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+    doc.text('Automotive Valve Rebuilding & Precision Tooling Manufacturer', startX, 23);
+  }
 
-  // Business Contacts (Right aligned)
+  // Business Contacts (Right aligned) - Explicitly including official website
   doc.setFontSize(8);
   doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
   doc.text('Asaf Ali Rd, Delhi, 110002, India', 210 - startX, 14, { align: 'right' });
@@ -440,23 +507,23 @@ export const generateClientSideQuotationPDF = (quote: QuotationDetails): void =>
 
   doc.setTextColor(textDark[0], textDark[1], textDark[2]);
   doc.setFont('helvetica', 'bold');
-  doc.text('Date: ', 80, 49.2);
+  doc.text('Date: ', 78, 49.2);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text(quote.quoteDate || formatDateDDMMYY(Date.now()), 90, 49.2);
+  doc.text(quote.quoteDate || formatDateDDMMYY(Date.now()), 88, 49.2);
 
   doc.setTextColor(textDark[0], textDark[1], textDark[2]);
   doc.setFont('helvetica', 'bold');
-  doc.text('Valid Until: ', 120, 49.2);
+  doc.text('Valid Until: ', 118, 49.2);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text(quote.validUntil || '30 Days from issue', 137, 49.2);
+  doc.text(quote.validUntil || '30 Days from issue', 135, 49.2);
 
   doc.setTextColor(textDark[0], textDark[1], textDark[2]);
   doc.setFont('helvetica', 'bold');
-  doc.text('Currency: ', 168, 49.2);
+  doc.text('Currency: ', 165, 49.2);
   doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-  doc.text(`${quote.currency || 'INR'} (${currencySym})`, 183, 49.2);
+  doc.text(`${quote.currency || 'INR'} (${currencySym.trim()})`, 180, 49.2);
 
   // 4. Buyer / Consignee Details Box
   let y = 55;
@@ -525,7 +592,7 @@ export const generateClientSideQuotationPDF = (quote: QuotationDetails): void =>
   doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
   doc.text(cust.gstin || 'Unregistered / Not Provided', col2ValX, y + 17.5);
 
-  // 5. Items Table
+  // 5. Items Table with Product Photos
   y += custBoxHeight + 5;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
@@ -534,59 +601,54 @@ export const generateClientSideQuotationPDF = (quote: QuotationDetails): void =>
 
   y += 2.5;
   const thHeight = 6.5;
-  doc.setFillColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-  doc.rect(startX, y, contentWidth, thHeight, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
 
-  const colNo = startX + 2; // width ~6
-  const colModel = startX + 9; // width ~25
-  const colDesc = startX + 35; // width ~58
-  const colQty = startX + 95; // width ~12
-  const colRate = startX + 110; // width ~22
-  const colDisc = startX + 134; // width ~14
-  const colGst = startX + 150; // width ~13
-  const colAmount = startX + 180; // right align
+  const colNo = startX + 2;        // 16
+  const colPhoto = startX + 8;     // 22
+  const colModel = startX + 24;    // 38
+  const colDesc = startX + 48;     // 62
+  const colQty = startX + 104;     // 118
+  const colRate = startX + 128;    // 142
+  const colDisc = startX + 142;    // 156
+  const colGst = startX + 156;     // 170
+  const colAmount = startX + 180;  // 194
 
-  doc.text('#', colNo, y + 4.5);
-  doc.text('Model / SKU', colModel, y + 4.5);
-  doc.text('Description & Technical Details', colDesc, y + 4.5);
-  doc.text('Qty', colQty, y + 4.5, { align: 'center' });
-  doc.text(`Unit Rate (${currencySym})`, colRate, y + 4.5, { align: 'right' });
-  doc.text('Disc %', colDisc, y + 4.5, { align: 'center' });
-  doc.text('GST %', colGst, y + 4.5, { align: 'center' });
-  doc.text(`Total (${currencySym})`, colAmount, y + 4.5, { align: 'right' });
+  const drawTableHeader = (curY: number) => {
+    doc.setFillColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
+    doc.rect(startX, curY, contentWidth, thHeight, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
 
+    doc.text('#', colNo, curY + 4.5);
+    doc.text('Photo', colPhoto + 1, curY + 4.5);
+    doc.text('Model / SKU', colModel, curY + 4.5);
+    doc.text('Description & Technical Details', colDesc, curY + 4.5);
+    doc.text('Qty', colQty, curY + 4.5, { align: 'center' });
+    doc.text(`Unit Rate (${currencySym.trim()})`, colRate, curY + 4.5, { align: 'right' });
+    doc.text('Disc %', colDisc, curY + 4.5, { align: 'center' });
+    doc.text('GST %', colGst, curY + 4.5, { align: 'center' });
+    doc.text(`Total (${currencySym.trim()})`, colAmount, curY + 4.5, { align: 'right' });
+  };
+
+  drawTableHeader(y);
   y += thHeight;
 
   // Table Body Rows
-  let itemIndex = 1;
-  const rowHeight = 9.5;
+  const rowHeight = 15;
+  const photoSize = 12;
 
-  (quote.items || []).forEach((it: QuotationLineItem) => {
-    if (y > 225) {
+  for (let idx = 0; idx < quote.items.length; idx++) {
+    const it = quote.items[idx];
+    const imgData = itemImages[idx];
+
+    if (y + rowHeight > 220) {
       doc.addPage();
       y = 20;
-
-      // Repeat Table Header on next page
-      doc.setFillColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-      doc.rect(startX, y, contentWidth, thHeight, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.text('#', colNo, y + 4.5);
-      doc.text('Model / SKU', colModel, y + 4.5);
-      doc.text('Description & Technical Details', colDesc, y + 4.5);
-      doc.text('Qty', colQty, y + 4.5, { align: 'center' });
-      doc.text(`Unit Rate (${currencySym})`, colRate, y + 4.5, { align: 'right' });
-      doc.text('Disc %', colDisc, y + 4.5, { align: 'center' });
-      doc.text('GST %', colGst, y + 4.5, { align: 'center' });
-      doc.text(`Total (${currencySym})`, colAmount, y + 4.5, { align: 'right' });
+      drawTableHeader(y);
       y += thHeight;
     }
 
-    const isEven = itemIndex % 2 === 0;
+    const isEven = (idx + 1) % 2 === 0;
     if (isEven) {
       doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
       doc.rect(startX, y, contentWidth, rowHeight, 'F');
@@ -595,38 +657,68 @@ export const generateClientSideQuotationPDF = (quote: QuotationDetails): void =>
     doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
     doc.line(startX, y + rowHeight, startX + contentWidth, y + rowHeight);
 
+    // Index
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-    doc.text(String(itemIndex), colNo, y + 5.5);
+    doc.text(String(idx + 1), colNo, y + 8);
 
+    // Product Photo Box
+    const pX = colPhoto - 1;
+    const pY = y + 1.5;
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
+    doc.rect(pX, pY, photoSize, photoSize, 'FD');
+
+    if (imgData) {
+      try {
+        doc.addImage(imgData, 'JPEG', pX + 0.5, pY + 0.5, photoSize - 1, photoSize - 1);
+      } catch {
+        doc.setFontSize(6);
+        doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+        doc.text('Photo', pX + photoSize / 2, pY + 7, { align: 'center' });
+      }
+    } else {
+      doc.setFontSize(6);
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+      doc.text(it.isCustom ? 'Custom' : 'Tool', pX + photoSize / 2, pY + 7, { align: 'center' });
+    }
+
+    // Model / SKU
     doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(textDark[0], textDark[1], textDark[2]);
     const sku = it.modelNo || (it.isCustom ? 'CUSTOM-TOOL' : 'STANDARD');
-    doc.text(sku.slice(0, 16), colModel, y + 5.5);
+    doc.text(sku.slice(0, 16), colModel, y + 6);
 
+    // Description & Technical Details
     doc.setFont('helvetica', 'normal');
     let desc = it.name || 'Industrial Tooling Unit';
     if (it.selectedVariant) desc += ` (${it.selectedVariant})`;
     if (it.notes) desc += ` • ${it.notes}`;
-    doc.text(desc.slice(0, 48), colDesc, y + 5.5);
+    doc.text(desc.slice(0, 44), colDesc, y + 6, { maxWidth: 50 });
 
+    // Quantity
     doc.setFont('helvetica', 'bold');
-    doc.text(String(it.quantity || 1), colQty, y + 5.5, { align: 'center' });
+    doc.text(String(it.quantity || 1), colQty, y + 8, { align: 'center' });
 
+    // Unit Rate
     doc.setFont('helvetica', 'normal');
-    doc.text(Number(it.unitPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }), colRate, y + 5.5, { align: 'right' });
+    doc.text(Number(it.unitPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }), colRate, y + 8, { align: 'right' });
 
-    doc.text(it.discountPercent ? `${it.discountPercent}%` : '—', colDisc, y + 5.5, { align: 'center' });
+    // Discount %
+    doc.text(it.discountPercent ? `${it.discountPercent}%` : '—', colDisc, y + 8, { align: 'center' });
 
-    doc.text(it.gstRate ? `${it.gstRate}%` : '0%', colGst, y + 5.5, { align: 'center' });
+    // GST %
+    doc.text(it.gstRate ? `${it.gstRate}%` : '0%', colGst, y + 8, { align: 'center' });
 
+    // Total Amount
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-    doc.text(Number(it.lineTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }), colAmount, y + 5.5, { align: 'right' });
+    doc.text(Number(it.lineTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }), colAmount, y + 8, { align: 'right' });
 
     y += rowHeight;
-    itemIndex++;
-  });
+  }
 
   // 6. Summary Totals & Commercial Terms Section
   if (y > 210) {
@@ -753,7 +845,7 @@ export const generateClientSideQuotationPDF = (quote: QuotationDetails): void =>
   doc.text('[ Authorized Signatory ]', sumLabelX + 15, signY + 12);
   doc.text('Commercial Sales Desk', sumLabelX + 14, signY + 16);
 
-  // Footer Disclaimer
+  // Footer Disclaimer - Explicitly mentioning the official website
   doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
   doc.line(startX, 280, startX + contentWidth, 280);
 
@@ -761,7 +853,7 @@ export const generateClientSideQuotationPDF = (quote: QuotationDetails): void =>
   doc.setFontSize(7);
   doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
   doc.text(
-    'This is an official computer-generated commercial quotation issued by PRAZTECH® Engineering. All prices are subject to stated terms and validity period.',
+    'This is an official computer-generated commercial quotation issued by PRAZTECH® Engineering. All prices are subject to stated terms and validity period. • Official Website: www.praztechtools.com',
     105,
     284.5,
     { align: 'center', maxWidth: contentWidth }

@@ -345,6 +345,7 @@ export const UsersPage: React.FC = () => {
       modelNo: 'PSH-VGKP-H',
       name: 'All in One 9/16" and 11/16" Valve Seat Grinding Kit',
       category: 'Valve Seat Grinding Tools',
+      image: '/images/products/psh-vgkp-with-heavy-stand.jpg',
       selectedVariant: 'Standard Heavy-Duty Set (Dual Arbor)',
       notes: 'Includes precision hex drive arbor, diamond wheel dresser, and heavy-duty case',
       quantity: 1,
@@ -448,6 +449,7 @@ export const UsersPage: React.FC = () => {
       modelNo: product?.modelNo || 'PRZ-TOOL',
       name: product?.name || 'Catalogue Tooling Product',
       category: product?.category || 'Precision Tooling',
+      image: product?.images?.[0] || '',
       selectedVariant: variantLabel || 'Standard Tooling Unit',
       notes: '',
       quantity: 1,
@@ -468,6 +470,7 @@ export const UsersPage: React.FC = () => {
       modelNo: 'CUSTOM-MACHINING',
       name: 'Custom Machined Tooling / Special Precision Service',
       category: 'Custom Engineering',
+      image: '',
       selectedVariant: 'Custom Specification / Technical Drawing',
       notes: '',
       quantity: 1,
@@ -492,6 +495,7 @@ export const UsersPage: React.FC = () => {
             updated.modelNo = matchedProd.modelNo;
             updated.name = matchedProd.name;
             updated.category = matchedProd.category;
+            updated.image = matchedProd.images?.[0] || '';
           }
         }
 
@@ -529,6 +533,14 @@ export const UsersPage: React.FC = () => {
     validUntilDate.setDate(validUntilDate.getDate() + Number(quoteForm.validityDays || 30));
     const validUntilStr = formatDateDDMMYY(validUntilDate);
 
+    const enrichedItems: QuotationLineItem[] = quoteItems.map(it => {
+      const matched = catalogueList.find(p => p.modelNo === it.modelNo || p.name === it.name);
+      return {
+        ...it,
+        image: it.image || matched?.images?.[0] || ''
+      };
+    });
+
     return {
       quoteNumber: quoteForm.quoteNumber,
       quoteDate: formatDateDDMMYY(quoteForm.quoteDate),
@@ -547,7 +559,7 @@ export const UsersPage: React.FC = () => {
         country: quoteForm.country || 'India',
         gstin: quoteForm.gstin || ''
       },
-      items: quoteItems,
+      items: enrichedItems,
       subtotal: quoteFinancials.subtotal,
       discountTotal: quoteFinancials.discountTotal,
       taxableAmount: quoteFinancials.taxableAmount,
@@ -568,9 +580,9 @@ export const UsersPage: React.FC = () => {
     };
   };
 
-  const handleDownloadQuotePDF = () => {
+  const handleDownloadQuotePDF = async () => {
     const quoteData = getQuotationDataForExport();
-    generateClientSideQuotationPDF(quoteData);
+    await generateClientSideQuotationPDF(quoteData);
   };
 
   const handlePreviewQuoteModal = () => {
@@ -720,7 +732,7 @@ export const UsersPage: React.FC = () => {
       });
       const json = await res.json();
       if (res.ok && json.success) {
-        handleDownloadQuotePDF();
+        await handleDownloadQuotePDF();
         await loadAllData();
 
         setActionSuccessMsg(
@@ -777,6 +789,7 @@ export const UsersPage: React.FC = () => {
           modelNo: 'PSH-VGKP-H',
           name: 'All in One 9/16" and 11/16" Valve Seat Grinding Kit',
           category: 'Valve Seat Grinding Tools',
+          image: '/images/products/psh-vgkp-with-heavy-stand.jpg',
           selectedVariant: 'Standard Heavy-Duty Set (Dual Arbor)',
           notes: 'Includes precision hex drive arbor, diamond wheel dresser, and heavy-duty case',
           quantity: 1,
@@ -4099,7 +4112,6 @@ export const UsersPage: React.FC = () => {
                       PRAZTECH® ENGINEERING
                     </h2>
                     <p className="text-xs text-[#6e568b] mt-0.5">Automotive Valve Rebuilding & Precision Tooling Manufacturer</p>
-                    <p className="text-[11px] text-[#5e3e8b] font-medium mt-1">ISO 9001:2015 Compliant Tooling Standards • Global Export Quality</p>
                   </div>
                   <div className="text-right text-[11px] text-[#6e568b] space-y-0.5">
                     <div>Asaf Ali Rd, Delhi, 110002, India</div>
@@ -4163,6 +4175,7 @@ export const UsersPage: React.FC = () => {
                     <thead className="bg-[#2e075d] text-white text-[11px] font-bold">
                       <tr>
                         <th className="py-2.5 px-3">#</th>
+                        <th className="py-2.5 px-3">Photo</th>
                         <th className="py-2.5 px-3">Model / SKU</th>
                         <th className="py-2.5 px-3">Description & Specifications</th>
                         <th className="py-2.5 px-3 text-center">Qty</th>
@@ -4173,32 +4186,50 @@ export const UsersPage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#dfd5e8]">
-                      {quoteItems.map((it, idx) => (
-                        <tr key={it.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-[#faf8fc]'}>
-                          <td className="py-2.5 px-3 font-medium text-[#6e568b]">{idx + 1}</td>
-                          <td className="py-2.5 px-3 font-mono font-bold text-[#2e075d]">{it.modelNo}</td>
-                          <td className="py-2.5 px-3">
-                            <div className="font-medium text-[#2e075d]">{it.name}</div>
-                            {it.selectedVariant && (
-                              <div className="text-[11px] text-[#5e3e8b]">Option: {it.selectedVariant}</div>
-                            )}
-                            {it.notes && (
-                              <div className="text-[10px] text-[#6e568b] italic">Note: {it.notes}</div>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 text-center font-bold text-[#2e075d]">{it.quantity}</td>
-                          <td className="py-2.5 px-3 text-right font-mono">
-                            {Number(it.unitPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                          </td>
-                          <td className="py-2.5 px-3 text-center text-[#6e568b]">
-                            {it.discountPercent ? `${it.discountPercent}%` : '—'}
-                          </td>
-                          <td className="py-2.5 px-3 text-center text-[#6e568b]">{it.gstRate ? `${it.gstRate}%` : '0%'}</td>
-                          <td className="py-2.5 px-3 text-right font-mono font-bold text-[#2e075d]">
-                            {Number(it.lineTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                          </td>
-                        </tr>
-                      ))}
+                      {quoteItems.map((it, idx) => {
+                        const matchedProduct = catalogueList.find(p => p.modelNo === it.modelNo || p.name === it.name);
+                        const photoUrl = it.image || matchedProduct?.images?.[0];
+                        return (
+                          <tr key={it.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-[#faf8fc]'}>
+                            <td className="py-2.5 px-3 font-medium text-[#6e568b]">{idx + 1}</td>
+                            <td className="py-2 px-3">
+                              {photoUrl ? (
+                                <img
+                                  src={photoUrl}
+                                  alt={it.name}
+                                  className="w-10 h-10 object-contain rounded border border-[#dfd5e8] bg-white p-0.5"
+                                  onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded border border-dashed border-[#dfd5e8] bg-[#f5f3f8] flex items-center justify-center text-[9px] text-[#9080a5]">
+                                  {it.isCustom ? 'Custom' : 'Tool'}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono font-bold text-[#2e075d]">{it.modelNo}</td>
+                            <td className="py-2.5 px-3">
+                              <div className="font-medium text-[#2e075d]">{it.name}</div>
+                              {it.selectedVariant && (
+                                <div className="text-[11px] text-[#5e3e8b]">Option: {it.selectedVariant}</div>
+                              )}
+                              {it.notes && (
+                                <div className="text-[10px] text-[#6e568b] italic">Note: {it.notes}</div>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-center font-bold text-[#2e075d]">{it.quantity}</td>
+                            <td className="py-2.5 px-3 text-right font-mono">
+                              {Number(it.unitPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-2.5 px-3 text-center text-[#6e568b]">
+                              {it.discountPercent ? `${it.discountPercent}%` : '—'}
+                            </td>
+                            <td className="py-2.5 px-3 text-center text-[#6e568b]">{it.gstRate ? `${it.gstRate}%` : '0%'}</td>
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-[#2e075d]">
+                              {Number(it.lineTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -4300,7 +4331,7 @@ export const UsersPage: React.FC = () => {
                 {/* Footer Disclaimer */}
                 <div className="pt-4 border-t border-[#dfd5e8] text-center text-[10px] text-[#9080a5]">
                   This is an official computer-generated commercial quotation issued electronically by PRAZTECH® Engineering.
-                  All prices and terms are valid as stated.
+                  All prices and terms are valid as stated. • Official Website: www.praztechtools.com
                 </div>
               </div>
             </div>
