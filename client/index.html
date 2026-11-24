@@ -2,27 +2,39 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Favicons with cache-busting version query -->
-    <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2026" />
-    <link rel="icon" id="dynamic-favicon" type="image/png" href="/favicon-black.png?v=2026" media="(prefers-color-scheme: light)" />
-    <link rel="icon" type="image/png" href="/favicon-white.png?v=2026" media="(prefers-color-scheme: dark)" />
-    <link rel="apple-touch-icon" href="/favicon-black.png?v=2026" />
+    <!-- Dynamic theme-aware favicons: White for Dark browser theme, Black for Light browser theme -->
+    <link rel="icon" id="dynamic-favicon" type="image/png" href="/favicon-black.png?v=3" media="(prefers-color-scheme: light)" />
+    <link rel="icon" id="dynamic-favicon-dark" type="image/png" href="/favicon-white.png?v=3" media="(prefers-color-scheme: dark)" />
+    <link rel="apple-touch-icon" href="/favicon-black.png?v=3" />
     <script>
       (function() {
         try {
-          var matcher = window.matchMedia('(prefers-color-scheme: dark)');
-          function updateFavicon() {
-            var icon = document.getElementById('dynamic-favicon');
-            if (icon) {
-              icon.href = (matcher.matches ? '/favicon-white.png' : '/favicon-black.png') + '?v=2026';
+          var darkMatcher = window.matchMedia('(prefers-color-scheme: dark)');
+          function applyFavicon(isDark) {
+            var targetHref = (isDark ? '/favicon-white.png' : '/favicon-black.png') + '?v=3';
+            var existing = document.getElementById('dynamic-favicon');
+            if (existing) {
+              existing.removeAttribute('media');
+              existing.href = targetHref;
+            } else {
+              var link = document.createElement('link');
+              link.id = 'dynamic-favicon';
+              link.rel = 'icon';
+              link.type = 'image/png';
+              link.href = targetHref;
+              document.head.appendChild(link);
+            }
+            var darkLink = document.getElementById('dynamic-favicon-dark');
+            if (darkLink && darkLink.parentNode) {
+              darkLink.parentNode.removeChild(darkLink);
             }
           }
-          if (matcher.addEventListener) {
-            matcher.addEventListener('change', updateFavicon);
-          } else if (matcher.addListener) {
-            matcher.addListener(updateFavicon);
+          applyFavicon(darkMatcher.matches);
+          if (darkMatcher.addEventListener) {
+            darkMatcher.addEventListener('change', function(e) { applyFavicon(e.matches); });
+          } else if (darkMatcher.addListener) {
+            darkMatcher.addListener(function(e) { applyFavicon(e.matches); });
           }
-          updateFavicon();
         } catch (e) {}
       })();
     </script>
