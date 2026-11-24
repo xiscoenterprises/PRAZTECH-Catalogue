@@ -22,6 +22,49 @@ export const LANGUAGES: Language[] = [
   { code: 'zh-CN', name: 'Chinese', nativeName: '简体中文', flag: '🇨🇳' }
 ];
 
+/**
+ * Returns all possible domain variations for cookie scoping (host, parent domain, with and without leading dot)
+ */
+const getDomainVariations = (): string[] => {
+  if (typeof window === 'undefined') return [''];
+  const host = window.location.hostname;
+  if (!host) return [''];
+  const parts = host.split('.');
+  const domains = ['', host, `.${host}`];
+  if (parts.length > 2) {
+    const parent = parts.slice(-2).join('.');
+    domains.push(parent, `.${parent}`);
+  }
+  return Array.from(new Set(domains));
+};
+
+/**
+ * Exhaustively clears googtrans cookies across all domains and paths to ensure clean reversion to English
+ */
+const clearGoogTransCookie = () => {
+  const domains = getDomainVariations();
+  const paths = ['/', ''];
+  domains.forEach(d => {
+    paths.forEach(p => {
+      const dAttr = d ? ` domain=${d};` : '';
+      const pAttr = p ? ` path=${p};` : '';
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC;${pAttr}${dAttr}`;
+    });
+  });
+};
+
+/**
+ * Sets googtrans cookie across all domain variations so Google Translate reliably reads it
+ */
+const setGoogTransCookie = (code: string) => {
+  const domains = getDomainVariations();
+  const cookieVal = `/en/${code}`;
+  domains.forEach(d => {
+    const dAttr = d ? ` domain=${d};` : '';
+    document.cookie = `googtrans=${cookieVal}; path=/;${dAttr}`;
+  });
+};
+
 declare global {
   interface Window {
     google?: any;
@@ -45,15 +88,19 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
   // Read current active language from cookie or localStorage
   const detectLanguage = (): string => {
     try {
+      const saved = localStorage.getItem('praztech_selected_lang');
+      if (saved === 'en') {
+        clearGoogTransCookie();
+        return 'en';
+      }
       const match = document.cookie.match(/(?:^|;\s*)googtrans=([^;]*)/);
       if (match && match[1]) {
         const parts = decodeURIComponent(match[1]).split('/');
         const code = parts[parts.length - 1];
-        if (code && LANGUAGES.some(l => l.code === code)) {
+        if (code && code !== 'en' && LANGUAGES.some(l => l.code === code)) {
           return code;
         }
       }
-      const saved = localStorage.getItem('praztech_selected_lang');
       if (saved && LANGUAGES.some(l => l.code === saved)) {
         return saved;
       }
@@ -65,6 +112,9 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
 
   useEffect(() => {
     const active = detectLanguage();
+    if (active === 'en') {
+      clearGoogTransCookie();
+    }
     setCurrentLang(active);
 
     // Apply RTL for Arabic if detected
@@ -171,23 +221,33 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
     setCurrentLang(code);
     localStorage.setItem('praztech_selected_lang', code);
 
-    const hostname = window.location.hostname;
-
     if (code === 'en') {
-      // Clear cookie to revert cleanly to default English
-      document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${hostname};`;
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${hostname};`;
+      // 1. Thoroughly wipe googtrans across all domain variations
+      clearGoogTransCookie();
       document.documentElement.removeAttribute('dir');
-      window.location.reload();
+
+      // 2. Try resetting Google Translate widget directly if attached
+      const select = document.querySelector('.goog-te-combo') as HTMLSelectElement | null;
+      if (select) {
+        const defaultOpt = Array.from(select.options).find(o => o.value === '' || o.value === 'en');
+        if (defaultOpt) {
+          select.value = defaultOpt.value;
+          select.dispatchEvent(new Event('change'));
+        }
+      }
+
+      setIsOpen(false);
+      if (onLanguageChange) onLanguageChange();
+
+      // 3. Reload cleanly so all DOM elements revert to pristine source English
+      setTimeout(() => {
+        window.location.reload();
+      }, 50);
       return;
     }
 
-    // Set cookie for target language
-    const cookieVal = `/en/${code}`;
-    document.cookie = `googtrans=${cookieVal}; path=/;`;
-    document.cookie = `googtrans=${cookieVal}; path=/; domain=.${hostname};`;
-    document.cookie = `googtrans=${cookieVal}; path=/; domain=${hostname};`;
+    // Set cookie across all domain variations
+    setGoogTransCookie(code);
 
     if (code === 'ar') {
       document.documentElement.setAttribute('dir', 'rtl');
