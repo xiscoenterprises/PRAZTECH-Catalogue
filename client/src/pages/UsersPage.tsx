@@ -37,10 +37,21 @@ import {
   Globe,
   Layers,
   Sparkles,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Calculator,
+  Printer,
+  Copy,
+  Check,
+  Send
 } from 'lucide-react';
 import { atlasService } from '../services/atlasService';
 import { formatDateDDMMYY } from '../utils/dateFormat';
+import {
+  generateClientSideQuotationPDF,
+  amountToWords,
+  QuotationDetails,
+  QuotationLineItem
+} from '../utils/clientPdfGenerator';
 import initialCatalogueData from '../data/products.json';
 import initialCategoriesData from '../data/categories.json';
 import { ExecutiveAuthGate } from './executive/ExecutiveAuthGate';
@@ -145,7 +156,7 @@ const STATUS_STYLES: Record<string, string> = {
   'Completed': 'bg-blue-50 text-blue-900 border-blue-200'
 };
 
-type TabId = 'quotations' | 'directory' | 'catalogue' | 'new-listing';
+type TabId = 'quotations' | 'directory' | 'catalogue' | 'new-listing' | 'create-quote';
 
 export const UsersPage: React.FC = () => {
   // Server-Side Authentication
@@ -166,7 +177,7 @@ export const UsersPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab');
   const initialActiveTab: TabId =
-    rawTab === 'directory' || rawTab === 'catalogue' || rawTab === 'new-listing'
+    rawTab === 'directory' || rawTab === 'catalogue' || rawTab === 'new-listing' || rawTab === 'create-quote'
       ? rawTab
       : 'quotations';
   const [activeTab, setActiveTab] = useState<TabId>(initialActiveTab);
@@ -283,6 +294,505 @@ export const UsersPage: React.FC = () => {
     ],
     generalNotes: ''
   });
+
+  // ── COMMERCIAL QUOTE MAKER STATE & HANDLERS ──
+  const generateNewQuoteNumber = () => {
+    const today = new Date();
+    const ymd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+    const rand = Math.floor(1000 + Math.random() * 9000);
+    return `PRZ-QT-${ymd}-${rand}`;
+  };
+
+  const CURRENCY_SYMBOLS: Record<string, string> = {
+    INR: '₹',
+    USD: '$',
+    EUR: '€',
+    GBP: '£'
+  };
+
+  const [quoteForm, setQuoteForm] = useState({
+    quoteNumber: generateNewQuoteNumber(),
+    quoteDate: new Date().toISOString().split('T')[0],
+    validityDays: 30,
+    currency: 'INR' as 'INR' | 'USD' | 'EUR' | 'GBP',
+    currencySymbol: '₹',
+    selectedCustomerId: '',
+    customerName: '',
+    company: '',
+    email: '',
+    phone: '',
+    whatsapp: '',
+    gstin: '',
+    address: '',
+    city: 'Delhi',
+    state: 'Delhi',
+    country: 'India',
+    paymentTerms: '50% advance, balance against Proforma Invoice / dispatch',
+    deliveryTimeline: 'Ex-stock / Ready for dispatch within 2-3 business days',
+    freightCharges: 0,
+    generalNotes: 'Standard 1-year manufacturer guarantee on tooling precision and metallurgical integrity.',
+    bankName: 'HDFC Bank Ltd',
+    accountName: 'PRAZTECH ENGINEERING',
+    accountNumber: '50200084729103',
+    ifscCode: 'HDFC0000123',
+    branch: 'Asaf Ali Road, New Delhi'
+  });
+
+  const [quoteItems, setQuoteItems] = useState<QuotationLineItem[]>([
+    {
+      id: 'quote-item-1',
+      isCustom: false,
+      modelNo: 'PSH-VGKP-H',
+      name: 'All in One 9/16" and 11/16" Valve Seat Grinding Kit',
+      category: 'Valve Seat Grinding Tools',
+      selectedVariant: 'Standard Heavy-Duty Set (Dual Arbor)',
+      notes: 'Includes precision hex drive arbor, diamond wheel dresser, and heavy-duty case',
+      quantity: 1,
+      unitPrice: 42500,
+      discountPercent: 5,
+      gstRate: 18,
+      lineTotal: 47642.5
+    }
+  ]);
+
+  const [isPreviewingQuoteModal, setIsPreviewingQuoteModal] = useState(false);
+  const [isSendingQuote, setIsSendingQuote] = useState(false);
+  const [quoteCopied, setQuoteCopied] = useState(false);
+
+  const computeItemLineTotal = (
+    quantity: number,
+    unitPrice: number,
+    discountPercent: number,
+    gstRate: number
+  ) => {
+    const qty = Math.max(1, Number(quantity) || 1);
+    const rate = Math.max(0, Number(unitPrice) || 0);
+    const disc = Math.min(100, Math.max(0, Number(discountPercent) || 0));
+    const gst = Math.max(0, Number(gstRate) || 0);
+
+    const base = qty * rate;
+    const discountAmt = base * (disc / 100);
+    const taxable = base - discountAmt;
+    const taxAmt = taxable * (gst / 100);
+    return Math.round((taxable + taxAmt) * 100) / 100;
+  };
+
+  const quoteFinancials = useMemo(() => {
+    let subtotal = 0;
+    let discountTotal = 0;
+    let taxableAmount = 0;
+    let taxTotal = 0;
+
+    quoteItems.forEach(it => {
+      const qty = Math.max(1, Number(it.quantity) || 1);
+      const rate = Math.max(0, Number(it.unitPrice) || 0);
+      const disc = Math.min(100, Math.max(0, Number(it.discountPercent) || 0));
+      const gst = Math.max(0, Number(it.gstRate) || 0);
+
+      const base = qty * rate;
+      const discAmt = base * (disc / 100);
+      const taxable = base - discAmt;
+      const taxAmt = taxable * (gst / 100);
+
+      subtotal += base;
+      discountTotal += discAmt;
+      taxableAmount += taxable;
+      taxTotal += taxAmt;
+    });
+
+    const freight = Math.max(0, Number(quoteForm.freightCharges) || 0);
+    const grandTotal = Math.round((taxableAmount + taxTotal + freight) * 100) / 100;
+
+    return {
+      subtotal: Math.round(subtotal * 100) / 100,
+      discountTotal: Math.round(discountTotal * 100) / 100,
+      taxableAmount: Math.round(taxableAmount * 100) / 100,
+      taxTotal: Math.round(taxTotal * 100) / 100,
+      freightCharges: freight,
+      grandTotal
+    };
+  }, [quoteItems, quoteForm.freightCharges]);
+
+  const handleCustomerAutoFill = (customerId: string) => {
+    if (!customerId) return;
+    const found = customersList.find(c => (c._id || c.id) === customerId);
+    if (found) {
+      setQuoteForm(prev => ({
+        ...prev,
+        selectedCustomerId: customerId,
+        customerName: found.fullName || '',
+        company: found.company || '',
+        email: found.email || '',
+        phone: found.phone || '',
+        whatsapp: found.whatsapp || found.phone || '',
+        gstin: found.gstin || '',
+        address: found.address || '',
+        city: found.city || '',
+        state: found.state || '',
+        country: found.country || 'India'
+      }));
+    }
+  };
+
+  const handleAddCatalogueItemToQuote = (productSlug?: string) => {
+    const product = (productSlug ? catalogueList.find(p => p.slug === productSlug) : null) || catalogueList[0];
+    const newItemId = `quote-item-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const defaultSubModel = product?.subModels?.[0];
+    const variantLabel = defaultSubModel
+      ? (defaultSubModel.sizeInches ? `${defaultSubModel.sizeInches} (${defaultSubModel.sizeMm || ''})` : defaultSubModel.modelNo || defaultSubModel.size || '')
+      : 'Standard';
+
+    const newItem: QuotationLineItem = {
+      id: newItemId,
+      isCustom: false,
+      modelNo: product?.modelNo || 'PRZ-TOOL',
+      name: product?.name || 'Catalogue Tooling Product',
+      category: product?.category || 'Precision Tooling',
+      selectedVariant: variantLabel || 'Standard Tooling Unit',
+      notes: '',
+      quantity: 1,
+      unitPrice: 0,
+      discountPercent: 0,
+      gstRate: quoteForm.currency === 'INR' ? 18 : 0,
+      lineTotal: 0
+    };
+
+    setQuoteItems(prev => [...prev, newItem]);
+  };
+
+  const handleAddCustomItemToQuote = () => {
+    const newItemId = `quote-custom-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const newItem: QuotationLineItem = {
+      id: newItemId,
+      isCustom: true,
+      modelNo: 'CUSTOM-MACHINING',
+      name: 'Custom Machined Tooling / Special Precision Service',
+      category: 'Custom Engineering',
+      selectedVariant: 'Custom Specification / Technical Drawing',
+      notes: '',
+      quantity: 1,
+      unitPrice: 0,
+      discountPercent: 0,
+      gstRate: quoteForm.currency === 'INR' ? 18 : 0,
+      lineTotal: 0
+    };
+
+    setQuoteItems(prev => [...prev, newItem]);
+  };
+
+  const handleUpdateQuoteItem = (id: string, updates: Partial<QuotationLineItem>) => {
+    setQuoteItems(prev =>
+      prev.map(item => {
+        if (item.id !== id) return item;
+        const updated = { ...item, ...updates };
+
+        if (updates.name && !updates.isCustom) {
+          const matchedProd = catalogueList.find(p => p.name === updates.name || p.modelNo === updates.name);
+          if (matchedProd) {
+            updated.modelNo = matchedProd.modelNo;
+            updated.name = matchedProd.name;
+            updated.category = matchedProd.category;
+          }
+        }
+
+        updated.lineTotal = computeItemLineTotal(
+          updated.quantity,
+          updated.unitPrice,
+          updated.discountPercent,
+          updated.gstRate
+        );
+        return updated;
+      })
+    );
+  };
+
+  const handleRemoveQuoteItem = (id: string) => {
+    if (quoteItems.length <= 1) {
+      alert('At least one item is required in the quotation.');
+      return;
+    }
+    setQuoteItems(prev => prev.filter(it => it.id !== id));
+  };
+
+  const handleDuplicateQuoteItem = (id: string) => {
+    const target = quoteItems.find(it => it.id === id);
+    if (!target) return;
+    const copy: QuotationLineItem = {
+      ...target,
+      id: `quote-item-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+    };
+    setQuoteItems(prev => [...prev, copy]);
+  };
+
+  const getQuotationDataForExport = (): QuotationDetails => {
+    const validUntilDate = new Date(quoteForm.quoteDate);
+    validUntilDate.setDate(validUntilDate.getDate() + Number(quoteForm.validityDays || 30));
+    const validUntilStr = formatDateDDMMYY(validUntilDate);
+
+    return {
+      quoteNumber: quoteForm.quoteNumber,
+      quoteDate: formatDateDDMMYY(quoteForm.quoteDate),
+      validUntil: `${validUntilStr} (${quoteForm.validityDays} Days)`,
+      currency: quoteForm.currency,
+      currencySymbol: quoteForm.currencySymbol,
+      customer: {
+        fullName: quoteForm.customerName || 'Prospective Customer',
+        company: quoteForm.company || '',
+        email: quoteForm.email || '',
+        phone: quoteForm.phone || quoteForm.whatsapp || '',
+        whatsapp: quoteForm.whatsapp || '',
+        address: quoteForm.address || '',
+        city: quoteForm.city || '',
+        state: quoteForm.state || '',
+        country: quoteForm.country || 'India',
+        gstin: quoteForm.gstin || ''
+      },
+      items: quoteItems,
+      subtotal: quoteFinancials.subtotal,
+      discountTotal: quoteFinancials.discountTotal,
+      taxableAmount: quoteFinancials.taxableAmount,
+      taxTotal: quoteFinancials.taxTotal,
+      freightCharges: quoteFinancials.freightCharges,
+      grandTotal: quoteFinancials.grandTotal,
+      paymentTerms: quoteForm.paymentTerms,
+      deliveryTimeline: quoteForm.deliveryTimeline,
+      generalNotes: quoteForm.generalNotes,
+      bankDetails: {
+        bankName: quoteForm.bankName,
+        accountName: quoteForm.accountName,
+        accountNumber: quoteForm.accountNumber,
+        ifscCode: quoteForm.ifscCode,
+        branch: quoteForm.branch
+      },
+      authorizedSignatory: 'Commercial Sales Desk'
+    };
+  };
+
+  const handleDownloadQuotePDF = () => {
+    const quoteData = getQuotationDataForExport();
+    generateClientSideQuotationPDF(quoteData);
+  };
+
+  const handlePreviewQuoteModal = () => {
+    setIsPreviewingQuoteModal(true);
+  };
+
+  const handleWhatsAppQuote = () => {
+    const targetPhone = quoteForm.whatsapp || quoteForm.phone;
+    if (!targetPhone) {
+      alert('Please enter a Customer Phone or WhatsApp number.');
+      return;
+    }
+    const cleanPhone = targetPhone.replace(/[^0-9]/g, '');
+    const itemsSummary = quoteItems
+      .map((it, idx) => `${idx + 1}. ${it.modelNo} (${it.quantity}x @ ${quoteForm.currencySymbol}${Number(it.unitPrice).toLocaleString('en-IN')})`)
+      .join('\n');
+
+    const text = encodeURIComponent(
+      `*PRAZTECH® ENGINEERING - COMMERCIAL QUOTATION*\n` +
+      `Quotation Ref: *${quoteForm.quoteNumber}*\n` +
+      `Customer: ${quoteForm.customerName} ${quoteForm.company ? `(${quoteForm.company})` : ''}\n\n` +
+      `*Scheduled Tooling Items:*\n${itemsSummary}\n\n` +
+      `*Grand Total: ${quoteForm.currencySymbol}${quoteFinancials.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}*\n` +
+      `Payment Terms: ${quoteForm.paymentTerms}\n` +
+      `Delivery: ${quoteForm.deliveryTimeline}\n` +
+      `Validity: ${quoteForm.validityDays} Days\n\n` +
+      `An official commercial quotation PDF has been generated. Please let us know if any adjustments or drawings are required.`
+    );
+    window.open(`https://wa.me/${cleanPhone}?text=${text}`, '_blank');
+  };
+
+  const handleCopyQuoteSummary = async () => {
+    const itemsSummary = quoteItems
+      .map(
+        (it, idx) =>
+          `${idx + 1}. [${it.modelNo}] ${it.name} | Qty: ${it.quantity} | Rate: ${quoteForm.currencySymbol}${it.unitPrice} | Total: ${quoteForm.currencySymbol}${it.lineTotal}`
+      )
+      .join('\n');
+
+    const summary =
+      `PRAZTECH ENGINEERING - OFFICIAL COMMERCIAL QUOTATION\n` +
+      `Quotation No: ${quoteForm.quoteNumber}\n` +
+      `Date: ${formatDateDDMMYY(quoteForm.quoteDate)}\n` +
+      `Customer: ${quoteForm.customerName} | Company: ${quoteForm.company || 'N/A'}\n` +
+      `Email: ${quoteForm.email} | Phone: ${quoteForm.phone}\n` +
+      `----------------------------------------\n` +
+      `${itemsSummary}\n` +
+      `----------------------------------------\n` +
+      `Subtotal: ${quoteForm.currencySymbol}${quoteFinancials.subtotal.toFixed(2)}\n` +
+      `Discount: -${quoteForm.currencySymbol}${quoteFinancials.discountTotal.toFixed(2)}\n` +
+      `Taxable Value: ${quoteForm.currencySymbol}${quoteFinancials.taxableAmount.toFixed(2)}\n` +
+      `Tax / GST: +${quoteForm.currencySymbol}${quoteFinancials.taxTotal.toFixed(2)}\n` +
+      `Freight Charges: ${quoteForm.currencySymbol}${quoteFinancials.freightCharges.toFixed(2)}\n` +
+      `GRAND TOTAL: ${quoteForm.currencySymbol}${quoteFinancials.grandTotal.toFixed(2)}\n` +
+      `Amount in Words: ${amountToWords(quoteFinancials.grandTotal, quoteForm.currency)}\n` +
+      `Payment Terms: ${quoteForm.paymentTerms}\n` +
+      `Lead Time: ${quoteForm.deliveryTimeline}\n`;
+
+    try {
+      await navigator.clipboard.writeText(summary);
+      setQuoteCopied(true);
+      setTimeout(() => setQuoteCopied(false), 2500);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSendQuoteToCustomer = async () => {
+    if (!quoteForm.customerName || !quoteForm.email || !quoteForm.phone) {
+      alert('Customer Name, Email, and Phone are mandatory to send a formal quotation.');
+      return;
+    }
+    if (!quoteItems || quoteItems.length === 0) {
+      alert('Please add at least one tooling product to the quotation.');
+      return;
+    }
+
+    setIsSendingQuote(true);
+
+    const catalogueItems = quoteItems
+      .filter(it => !it.isCustom)
+      .map(it => ({
+        productId: it.modelNo,
+        modelNo: it.modelNo,
+        name: it.name,
+        category: it.category || 'Precision Tooling',
+        selectedSubModel: {
+          variant: it.selectedVariant,
+          unitPrice: it.unitPrice,
+          discountPercent: it.discountPercent,
+          gstRate: it.gstRate,
+          lineTotal: it.lineTotal
+        },
+        quantity: it.quantity,
+        notes: `[PRICED: ${quoteForm.currencySymbol}${it.unitPrice} each, Disc ${it.discountPercent}%, GST ${it.gstRate}%, Line Total ${quoteForm.currencySymbol}${it.lineTotal}] ${it.notes || ''}`.trim(),
+        productSnapshot: {
+          ...it,
+          currency: quoteForm.currency,
+          currencySymbol: quoteForm.currencySymbol
+        }
+      }));
+
+    const customItems = quoteItems
+      .filter(it => it.isCustom)
+      .map(it => ({
+        productName: it.name,
+        specifications: it.selectedVariant || '',
+        quantity: it.quantity,
+        intendedApplication: 'Custom Machining / Valve Rebuilding',
+        notes: `[PRICED: ${quoteForm.currencySymbol}${it.unitPrice} each, Line Total ${quoteForm.currencySymbol}${it.lineTotal}] ${it.notes || ''}`.trim()
+      }));
+
+    const generalNotesWithCommercials =
+      `OFFICIAL COMMERCIAL QUOTATION: ${quoteForm.quoteNumber}\n` +
+      `Grand Total: ${quoteForm.currencySymbol}${quoteFinancials.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })} (${amountToWords(quoteFinancials.grandTotal, quoteForm.currency)})\n` +
+      `Subtotal: ${quoteForm.currencySymbol}${quoteFinancials.subtotal} | Tax: ${quoteForm.currencySymbol}${quoteFinancials.taxTotal} | Freight: ${quoteForm.currencySymbol}${quoteFinancials.freightCharges}\n` +
+      `Payment Terms: ${quoteForm.paymentTerms}\n` +
+      `Delivery: ${quoteForm.deliveryTimeline}\n` +
+      `Validity: ${quoteForm.validityDays} Days\n` +
+      (quoteForm.generalNotes ? `Notes: ${quoteForm.generalNotes}` : '');
+
+    const payload = {
+      customer: {
+        fullName: quoteForm.customerName,
+        company: quoteForm.company || '',
+        email: quoteForm.email,
+        phone: quoteForm.phone,
+        whatsapp: quoteForm.whatsapp || quoteForm.phone,
+        city: quoteForm.city || 'Delhi',
+        state: quoteForm.state || 'Delhi',
+        country: quoteForm.country || 'India',
+        address: quoteForm.address || 'Direct Commercial Quotation',
+        gstin: quoteForm.gstin || ''
+      },
+      catalogueItems,
+      customItems,
+      generalNotes: generalNotesWithCommercials,
+      status: 'Quotation Dispatched',
+      consent: { accepted: true, policyVersion: '1.0' }
+    };
+
+    try {
+      const res = await fetch('/api/enquiries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        handleDownloadQuotePDF();
+        await loadAllData();
+
+        setActionSuccessMsg(
+          `Quotation ${quoteForm.quoteNumber} (Reference: ${json.data?.referenceNumber || ''}) saved to database as "Quotation Dispatched"! Customer notification email dispatched.`
+        );
+
+        setActiveTab('quotations');
+        setEnquirySearch('');
+        setSelectedStatus('all');
+      } else {
+        alert(json.message || 'Could not dispatch quotation.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error connecting to quotation server.');
+    } finally {
+      setIsSendingQuote(false);
+    }
+  };
+
+  const handleResetQuoteForm = () => {
+    if (confirm('Are you sure you want to reset the quotation form? All entered items and prices will be cleared.')) {
+      setQuoteForm({
+        quoteNumber: generateNewQuoteNumber(),
+        quoteDate: new Date().toISOString().split('T')[0],
+        validityDays: 30,
+        currency: 'INR',
+        currencySymbol: '₹',
+        selectedCustomerId: '',
+        customerName: '',
+        company: '',
+        email: '',
+        phone: '',
+        whatsapp: '',
+        gstin: '',
+        address: '',
+        city: 'Delhi',
+        state: 'Delhi',
+        country: 'India',
+        paymentTerms: '50% advance, balance against Proforma Invoice / dispatch',
+        deliveryTimeline: 'Ex-stock / Ready for dispatch within 2-3 business days',
+        freightCharges: 0,
+        generalNotes: 'Standard 1-year manufacturer guarantee on tooling precision and metallurgical integrity.',
+        bankName: 'HDFC Bank Ltd',
+        accountName: 'PRAZTECH ENGINEERING',
+        accountNumber: '50200084729103',
+        ifscCode: 'HDFC0000123',
+        branch: 'Asaf Ali Road, New Delhi'
+      });
+      setQuoteItems([
+        {
+          id: `quote-item-${Date.now()}`,
+          isCustom: false,
+          modelNo: 'PSH-VGKP-H',
+          name: 'All in One 9/16" and 11/16" Valve Seat Grinding Kit',
+          category: 'Valve Seat Grinding Tools',
+          selectedVariant: 'Standard Heavy-Duty Set (Dual Arbor)',
+          notes: 'Includes precision hex drive arbor, diamond wheel dresser, and heavy-duty case',
+          quantity: 1,
+          unitPrice: 42500,
+          discountPercent: 5,
+          gstRate: 18,
+          lineTotal: 47642.5
+        }
+      ]);
+    }
+  };
+
+  const handleStartQuoteForCustomer = (cust: B2BCustomer) => {
+    handleCustomerAutoFill(cust._id || cust.id || '');
+    handleTabSwitch('create-quote');
+  };
 
   // Clear auto-toast
   useEffect(() => {
@@ -1395,6 +1905,21 @@ export const UsersPage: React.FC = () => {
           </button>
 
           <button
+            onClick={() => handleTabSwitch('create-quote')}
+            className={`px-5 py-3.5 text-xs font-medium inline-flex items-center space-x-2 border-b-2 transition-colors cursor-pointer ${
+              activeTab === 'create-quote'
+                ? 'border-[#5e3e8b] text-[#2e075d] bg-white font-semibold'
+                : 'border-transparent text-[#6e568b] hover:text-[#2e075d]'
+            }`}
+          >
+            <Calculator className="w-4 h-4 text-[#5e3e8b]" />
+            <span>Quote Maker</span>
+            <span className="ml-1.5 px-2 py-0.5 rounded-full text-[11px] font-mono bg-[#efe7f7] text-[#5e3e8b] font-bold">
+              {quoteItems.length}
+            </span>
+          </button>
+
+          <button
             onClick={() => handleTabSwitch('directory')}
             className={`px-5 py-3.5 text-xs font-medium inline-flex items-center space-x-2 border-b-2 transition-colors cursor-pointer ${
               activeTab === 'directory'
@@ -1476,6 +2001,15 @@ export const UsersPage: React.FC = () => {
                   <option value="Order Confirmed">Order Confirmed ({statusCounts['Order Confirmed'] || 0})</option>
                   <option value="Closed">Closed ({statusCounts['Closed'] || 0})</option>
                 </select>
+
+                <button
+                  onClick={() => handleTabSwitch('create-quote')}
+                  className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-[#2e075d] hover:bg-[#431477] text-white text-xs font-medium transition-colors shadow-xs cursor-pointer"
+                  title="Create a formal commercial quotation with prices"
+                >
+                  <Calculator className="w-3.5 h-3.5" />
+                  <span>Make Commercial Quote</span>
+                </button>
 
                 <button
                   onClick={() => setIsAddingEnquiry(true)}
@@ -1838,6 +2372,13 @@ export const UsersPage: React.FC = () => {
                         </div>
 
                         <div className="flex items-center space-x-1">
+                          <button
+                            onClick={() => handleStartQuoteForCustomer(cust)}
+                            className="p-1.5 text-[#5e3e8b] hover:text-[#2e075d] hover:bg-[#efe7f7] rounded cursor-pointer"
+                            title="Make Commercial Quote for this Customer"
+                          >
+                            <Calculator className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => setEditingCustomer(cust)}
                             className="p-1.5 text-[#6e568b] hover:text-[#2e075d] hover:bg-[#efe7f7] rounded cursor-pointer"
@@ -2703,7 +3244,1101 @@ export const UsersPage: React.FC = () => {
             </form>
           </div>
         )}
+
+        {/* ── TAB 5: COMMERCIAL QUOTE MAKER ── */}
+        {activeTab === 'create-quote' && (
+          <div className="p-6 sm:p-8 space-y-8">
+            {/* Top Toolbar & Summary Header */}
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-[#dfd5e8] pb-5">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="font-heading font-medium text-lg text-[#2e075d] flex items-center space-x-2">
+                    <Calculator className="w-5 h-5 text-[#5e3e8b]" />
+                    <span>Commercial Quotation Maker</span>
+                  </h3>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-[#efe7f7] text-[#5e3e8b] border border-[#dfd5e8]">
+                    Executive Pro
+                  </span>
+                </div>
+                <p className="text-xs text-[#6e568b] mt-1">
+                  Build custom quotations with exact pricing, tiered discounts, GST taxes, live PDF preview, and direct dispatch to customer via email & WhatsApp.
+                </p>
+              </div>
+
+              {/* Action Buttons Toolbar */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePreviewQuoteModal}
+                  className="px-3.5 py-2 rounded-lg border border-[#dfd5e8] bg-white text-[#2e075d] hover:bg-[#faf8fc] text-xs font-medium flex items-center space-x-1.5 shadow-2xs transition-colors cursor-pointer"
+                  title="Open on-screen printable A4 quotation preview"
+                >
+                  <Eye className="w-4 h-4 text-[#5e3e8b]" />
+                  <span>Preview PDF</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadQuotePDF}
+                  className="px-3.5 py-2 rounded-lg bg-[#5e3e8b] hover:bg-[#6e568b] text-white text-xs font-medium flex items-center space-x-1.5 shadow-2xs transition-colors cursor-pointer"
+                  title="Download vector PDF quote directly"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download PDF</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSendQuoteToCustomer}
+                  disabled={isSendingQuote}
+                  className="px-4 py-2 rounded-lg bg-[#2e075d] hover:bg-[#431477] text-white text-xs font-medium flex items-center space-x-1.5 shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+                  title="Save quote in database as 'Quotation Dispatched' and email PDF to buyer"
+                >
+                  {isSendingQuote ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Dispatching Quote...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Send Quote to Customer</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleWhatsAppQuote}
+                  className="px-3.5 py-2 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 text-xs font-medium flex items-center space-x-1.5 transition-colors cursor-pointer"
+                  title="Open prefilled WhatsApp message with quote summary"
+                >
+                  <MessageCircle className="w-4 h-4 text-emerald-600" />
+                  <span>WhatsApp</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCopyQuoteSummary}
+                  className="p-2 rounded-lg border border-[#dfd5e8] bg-white text-[#6e568b] hover:text-[#2e075d] hover:bg-[#faf8fc] text-xs transition-colors cursor-pointer"
+                  title="Copy plain-text summary to clipboard"
+                >
+                  {quoteCopied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResetQuoteForm}
+                  className="p-2 rounded-lg border border-[#dfd5e8] bg-white text-[#9080a5] hover:text-rose-600 hover:bg-rose-50 text-xs transition-colors cursor-pointer"
+                  title="Reset quotation form"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* SECTION 1: CUSTOMER & QUOTATION METADATA */}
+            <div className="bg-[#fcfbfe] border border-[#dfd5e8] rounded-xl p-5 sm:p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <h4 className="font-heading font-medium text-xs text-[#2e075d] uppercase tracking-wider flex items-center space-x-1.5">
+                  <Users className="w-4 h-4 text-[#5e3e8b]" />
+                  <span>1. Customer & Commercial Quotation Details</span>
+                </h4>
+
+                {/* Optional Customer Auto-Fill */}
+                {customersList.length > 0 && (
+                  <div className="flex items-center space-x-2">
+                    <span className="text-[11px] font-medium text-[#6e568b]">Auto-fill:</span>
+                    <select
+                      value={quoteForm.selectedCustomerId}
+                      onChange={e => handleCustomerAutoFill(e.target.value)}
+                      className="px-2.5 py-1 text-xs rounded-lg border border-[#dfd5e8] bg-white text-[#2e075d] focus:border-[#5e3e8b] focus:outline-none cursor-pointer"
+                    >
+                      <option value="">-- Choose registered customer --</option>
+                      {customersList.map(c => (
+                        <option key={c._id || c.id} value={c._id || c.id}>
+                          {c.fullName} {c.company ? `(${c.company})` : ''} — {c.phone}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Customer Inputs Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 text-xs">
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">Customer / Buyer Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={quoteForm.customerName}
+                    onChange={e => setQuoteForm({ ...quoteForm, customerName: e.target.value })}
+                    placeholder="e.g. Anand Patel"
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">Company / Workshop Name</label>
+                  <input
+                    type="text"
+                    value={quoteForm.company}
+                    onChange={e => setQuoteForm({ ...quoteForm, company: e.target.value })}
+                    placeholder="e.g. Precision Cylinder Head Works"
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">Email Address *</label>
+                  <input
+                    type="email"
+                    required
+                    value={quoteForm.email}
+                    onChange={e => setQuoteForm({ ...quoteForm, email: e.target.value })}
+                    placeholder="buyer@example.com"
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">Mobile / Phone *</label>
+                  <input
+                    type="tel"
+                    required
+                    value={quoteForm.phone}
+                    onChange={e => setQuoteForm({ ...quoteForm, phone: e.target.value })}
+                    placeholder="+91 98765 43210"
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">WhatsApp Number</label>
+                  <input
+                    type="tel"
+                    value={quoteForm.whatsapp}
+                    onChange={e => setQuoteForm({ ...quoteForm, whatsapp: e.target.value })}
+                    placeholder="+91 98765 43210"
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">GSTIN / Tax ID</label>
+                  <input
+                    type="text"
+                    value={quoteForm.gstin}
+                    onChange={e => setQuoteForm({ ...quoteForm, gstin: e.target.value })}
+                    placeholder="07AAAAA0000A1Z5"
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">City & State</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={quoteForm.city}
+                      onChange={e => setQuoteForm({ ...quoteForm, city: e.target.value })}
+                      placeholder="Delhi"
+                      className="w-full px-2.5 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={quoteForm.state}
+                      onChange={e => setQuoteForm({ ...quoteForm, state: e.target.value })}
+                      placeholder="Delhi"
+                      className="w-full px-2.5 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">Country</label>
+                  <input
+                    type="text"
+                    value={quoteForm.country}
+                    onChange={e => setQuoteForm({ ...quoteForm, country: e.target.value })}
+                    placeholder="India"
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Quotation Parameters Row */}
+              <div className="pt-4 border-t border-[#dfd5e8] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">Quotation Reference #</label>
+                  <input
+                    type="text"
+                    value={quoteForm.quoteNumber}
+                    onChange={e => setQuoteForm({ ...quoteForm, quoteNumber: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white font-mono text-[#5e3e8b] font-semibold focus:border-[#5e3e8b] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">Quotation Issue Date</label>
+                  <input
+                    type="date"
+                    value={quoteForm.quoteDate}
+                    onChange={e => setQuoteForm({ ...quoteForm, quoteDate: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none cursor-pointer"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">Offer Validity Period</label>
+                  <select
+                    value={quoteForm.validityDays}
+                    onChange={e => setQuoteForm({ ...quoteForm, validityDays: Number(e.target.value) || 30 })}
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none cursor-pointer font-medium"
+                  >
+                    <option value={15}>15 Days Validity</option>
+                    <option value={30}>30 Days Validity (Standard)</option>
+                    <option value={45}>45 Days Validity</option>
+                    <option value={60}>60 Days Validity</option>
+                    <option value={90}>90 Days Validity</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">Currency</label>
+                  <select
+                    value={quoteForm.currency}
+                    onChange={e => {
+                      const cur = e.target.value as any;
+                      setQuoteForm(prev => ({
+                        ...prev,
+                        currency: cur,
+                        currencySymbol: CURRENCY_SYMBOLS[cur] || '₹'
+                      }));
+                    }}
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none cursor-pointer font-medium text-[#5e3e8b]"
+                  >
+                    <option value="INR">INR (₹) — Indian Rupee</option>
+                    <option value="USD">USD ($) — US Dollar</option>
+                    <option value="EUR">EUR (€) — Euro</option>
+                    <option value="GBP">GBP (£) — British Pound</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 2: LINE ITEMS & TOOLING PRODUCTS */}
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[#dfd5e8] pb-3">
+                <div>
+                  <h4 className="font-heading font-medium text-xs text-[#2e075d] uppercase tracking-wider flex items-center space-x-1.5">
+                    <FileSpreadsheet className="w-4 h-4 text-[#5e3e8b]" />
+                    <span>2. Itemized Tooling Schedule & Pricing ({quoteItems.length} {quoteItems.length === 1 ? 'Item' : 'Items'})</span>
+                  </h4>
+                  <p className="text-[11px] text-[#9080a5]">Select catalogue products or create custom manufactured items with unit price, discount, and tax.</p>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAddCatalogueItemToQuote()}
+                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#efe7f7] text-[#2e075d] hover:bg-[#e4d8f0] text-xs font-medium transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-[#5e3e8b]" />
+                    <span>+ Add Catalogue Tool</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleAddCustomItemToQuote}
+                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-[#dfd5e8] bg-white text-[#5e3e8b] hover:bg-[#faf8fc] text-xs font-medium transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Add Custom Machining / Tool</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Items List */}
+              <div className="space-y-3">
+                {quoteItems.map((item, idx) => {
+                  const matchedProduct = catalogueList.find(p => p.modelNo === item.modelNo || p.name === item.name);
+                  const availableSubModels = matchedProduct?.subModels || [];
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="bg-white rounded-xl border border-[#dfd5e8] p-4 sm:p-5 space-y-3.5 shadow-2xs relative transition-all hover:border-[#5e3e8b]"
+                    >
+                      {/* Item Top Bar */}
+                      <div className="flex items-center justify-between border-b border-[#f0ebf5] pb-2.5">
+                        <div className="flex items-center space-x-2">
+                          <span className="w-6 h-6 rounded-md bg-[#2e075d] text-white flex items-center justify-center font-mono text-xs font-bold">
+                            {idx + 1}
+                          </span>
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
+                            item.isCustom
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : 'bg-purple-50 text-purple-800 border-purple-200'
+                          }`}>
+                            {item.isCustom ? 'Custom Machined Tool' : 'Catalogue Product'}
+                          </span>
+                          <span className="font-mono font-semibold text-xs text-[#2e075d]">
+                            {item.modelNo}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center space-x-1">
+                          <button
+                            type="button"
+                            onClick={() => handleDuplicateQuoteItem(item.id)}
+                            className="p-1.5 text-[#6e568b] hover:text-[#2e075d] hover:bg-[#efe7f7] rounded cursor-pointer"
+                            title="Duplicate this line item"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                          {quoteItems.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveQuoteItem(item.id)}
+                              className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded cursor-pointer"
+                              title="Remove item from quotation"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Item Identification Fields */}
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 text-xs">
+                        {/* Product selection or custom name */}
+                        <div className="md:col-span-6">
+                          <label className="block font-medium text-[#2e075d] mb-1">
+                            {item.isCustom ? 'Custom Tooling Description *' : 'Select Catalogue Product *'}
+                          </label>
+                          {item.isCustom ? (
+                            <input
+                              type="text"
+                              value={item.name}
+                              onChange={e => handleUpdateQuoteItem(item.id, { name: e.target.value })}
+                              placeholder="e.g. Special 45° Diamond Reversible Cutter, 42mm OD"
+                              className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                            />
+                          ) : (
+                            <select
+                              value={matchedProduct?.slug || ''}
+                              onChange={e => {
+                                const p = catalogueList.find(x => x.slug === e.target.value);
+                                if (p) {
+                                  const defVariant = p.subModels?.[0]
+                                    ? (p.subModels[0].sizeInches ? `${p.subModels[0].sizeInches} (${p.subModels[0].sizeMm || ''})` : p.subModels[0].modelNo || p.subModels[0].size || 'Standard')
+                                    : 'Standard';
+                                  handleUpdateQuoteItem(item.id, {
+                                    modelNo: p.modelNo,
+                                    name: p.name,
+                                    category: p.category,
+                                    selectedVariant: defVariant
+                                  });
+                                }
+                              }}
+                              className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none cursor-pointer"
+                            >
+                              {catalogueList.map(p => (
+                                <option key={p.slug} value={p.slug}>
+                                  {p.modelNo} — {p.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+
+                        {/* Variant / Sub-model / Specific Size */}
+                        <div className="md:col-span-6">
+                          <label className="block font-medium text-[#2e075d] mb-1">
+                            Selected Variant / Size / Spec Option
+                          </label>
+                          {!item.isCustom && availableSubModels.length > 0 ? (
+                            <select
+                              value={item.selectedVariant}
+                              onChange={e => handleUpdateQuoteItem(item.id, { selectedVariant: e.target.value })}
+                              className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none cursor-pointer"
+                            >
+                              <option value="Standard Model">Standard Unit</option>
+                              {availableSubModels.map((sm, smIdx) => {
+                                const label = sm.sizeInches
+                                  ? `${sm.sizeInches} (${sm.sizeMm || ''})`
+                                  : sm.modelNo || sm.size || sm.specification || `Option #${smIdx + 1}`;
+                                return (
+                                  <option key={smIdx} value={label}>
+                                    {label} {sm.stoneColor ? `[${sm.stoneColor} Stone]` : ''}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              value={item.selectedVariant || ''}
+                              onChange={e => handleUpdateQuoteItem(item.id, { selectedVariant: e.target.value })}
+                              placeholder="e.g. 5.5mm pilot, 45 degree angle, red ruby stone"
+                              className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                            />
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Pricing, Quantity, Discount, GST Grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-1 text-xs">
+                        <div>
+                          <label className="block font-medium text-[#2e075d] mb-1">Quantity</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={e => handleUpdateQuoteItem(item.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
+                            className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white font-medium focus:border-[#5e3e8b] focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block font-medium text-[#2e075d] mb-1">
+                            Unit Rate ({quoteForm.currencySymbol}) *
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={item.unitPrice || ''}
+                            onChange={e => handleUpdateQuoteItem(item.id, { unitPrice: Math.max(0, parseFloat(e.target.value) || 0) })}
+                            placeholder="0.00"
+                            className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white font-mono font-medium focus:border-[#5e3e8b] focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block font-medium text-[#2e075d] mb-1">Discount %</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.5"
+                            value={item.discountPercent || ''}
+                            onChange={e => handleUpdateQuoteItem(item.id, { discountPercent: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
+                            placeholder="0"
+                            className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white font-mono focus:border-[#5e3e8b] focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block font-medium text-[#2e075d] mb-1">GST / Tax %</label>
+                          <select
+                            value={item.gstRate}
+                            onChange={e => handleUpdateQuoteItem(item.id, { gstRate: parseFloat(e.target.value) || 0 })}
+                            className="w-full px-2.5 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none cursor-pointer font-medium"
+                          >
+                            <option value={0}>0% (Exempt / Export)</option>
+                            <option value={5}>5% GST</option>
+                            <option value={12}>12% GST</option>
+                            <option value={18}>18% GST (Standard Tooling)</option>
+                            <option value={28}>28% GST</option>
+                          </select>
+                        </div>
+
+                        <div className="col-span-2 sm:col-span-1 bg-[#faf8fc] p-2.5 rounded-lg border border-[#dfd5e8] flex flex-col justify-center">
+                          <span className="text-[10px] uppercase font-bold text-[#6e568b]">Line Total</span>
+                          <span className="font-mono font-bold text-sm text-[#2e075d]">
+                            {quoteForm.currencySymbol}
+                            {Number(item.lineTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Technical Notes / Line Item Remarks */}
+                      <div>
+                        <input
+                          type="text"
+                          value={item.notes || ''}
+                          onChange={e => handleUpdateQuoteItem(item.id, { notes: e.target.value })}
+                          placeholder="Technical notes (e.g. with Sioux 45° pilot arbor, DIN grade carbide)"
+                          className="w-full px-3 py-1.5 rounded-lg border border-[#dfd5e8] bg-white text-xs text-[#6e568b] focus:border-[#5e3e8b] focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Add Item Bottom Buttons */}
+              <div className="flex items-center space-x-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => handleAddCatalogueItemToQuote()}
+                  className="flex-1 py-2.5 border border-dashed border-[#5e3e8b] text-[#5e3e8b] hover:bg-[#efe7f7] rounded-xl text-xs font-medium flex items-center justify-center space-x-2 transition-colors cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Add Another Catalogue Tool</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleAddCustomItemToQuote}
+                  className="flex-1 py-2.5 border border-dashed border-[#dfd5e8] text-[#6e568b] hover:text-[#2e075d] hover:bg-[#faf8fc] rounded-xl text-xs font-medium flex items-center justify-center space-x-2 transition-colors cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Add Custom Machined Tool</span>
+                </button>
+              </div>
+            </div>
+
+            {/* SECTION 3: COMMERCIAL TERMS & BANK DETAILS */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Commercial Terms */}
+              <div className="bg-[#fcfbfe] border border-[#dfd5e8] rounded-xl p-5 space-y-4 text-xs">
+                <h4 className="font-heading font-medium text-xs text-[#2e075d] uppercase tracking-wider flex items-center space-x-1.5">
+                  <Receipt className="w-4 h-4 text-[#5e3e8b]" />
+                  <span>3. Commercial Conditions & Delivery</span>
+                </h4>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">Payment Terms</label>
+                  <select
+                    value={quoteForm.paymentTerms}
+                    onChange={e => setQuoteForm({ ...quoteForm, paymentTerms: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none cursor-pointer"
+                  >
+                    <option value="50% advance, balance against Proforma Invoice / dispatch">
+                      50% advance, balance against Proforma Invoice / dispatch (Standard)
+                    </option>
+                    <option value="100% advance against Proforma Invoice">
+                      100% advance against Proforma Invoice
+                    </option>
+                    <option value="50% advance, balance against B/L copy (International Exports)">
+                      50% advance, balance against B/L copy (Exports)
+                    </option>
+                    <option value="Net 30 days against authorized Purchase Order">
+                      Net 30 days against authorized Purchase Order
+                    </option>
+                    <option value="Immediate settlement upon delivery">
+                      Immediate settlement upon delivery
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">Dispatch & Delivery Timeline</label>
+                  <input
+                    type="text"
+                    value={quoteForm.deliveryTimeline}
+                    onChange={e => setQuoteForm({ ...quoteForm, deliveryTimeline: e.target.value })}
+                    placeholder="e.g. Ex-stock / Ready for dispatch within 2-3 business days"
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">
+                    Freight, Courier & Packaging Charges ({quoteForm.currencySymbol})
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={quoteForm.freightCharges || ''}
+                    onChange={e => setQuoteForm({ ...quoteForm, freightCharges: Math.max(0, parseFloat(e.target.value) || 0) })}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white font-mono focus:border-[#5e3e8b] focus:outline-none"
+                  />
+                  <span className="text-[10px] text-[#9080a5] mt-0.5 block">
+                    Enter 0 if freight is borne by consignee or included in tool prices.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">Special Customer Notes / Instructions</label>
+                  <textarea
+                    rows={2}
+                    value={quoteForm.generalNotes}
+                    onChange={e => setQuoteForm({ ...quoteForm, generalNotes: e.target.value })}
+                    placeholder="Special terms, dimensional certifications, or workshop instructions..."
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Bank Remittance Details */}
+              <div className="bg-[#fcfbfe] border border-[#dfd5e8] rounded-xl p-5 space-y-4 text-xs">
+                <h4 className="font-heading font-medium text-xs text-[#2e075d] uppercase tracking-wider flex items-center space-x-1.5">
+                  <ShieldCheck className="w-4 h-4 text-[#5e3e8b]" />
+                  <span>4. Bank Remittance Details (For Invoice / Wire)</span>
+                </h4>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-medium text-[#2e075d] mb-1">Bank Name</label>
+                    <input
+                      type="text"
+                      value={quoteForm.bankName}
+                      onChange={e => setQuoteForm({ ...quoteForm, bankName: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-[#2e075d] mb-1">Branch</label>
+                    <input
+                      type="text"
+                      value={quoteForm.branch}
+                      onChange={e => setQuoteForm({ ...quoteForm, branch: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">Account Beneficiary Name</label>
+                  <input
+                    type="text"
+                    value={quoteForm.accountName}
+                    onChange={e => setQuoteForm({ ...quoteForm, accountName: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none font-semibold text-[#2e075d]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-medium text-[#2e075d] mb-1">Account Number</label>
+                    <input
+                      type="text"
+                      value={quoteForm.accountNumber}
+                      onChange={e => setQuoteForm({ ...quoteForm, accountNumber: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none font-mono font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-[#2e075d] mb-1">IFSC / Routing Code</label>
+                    <input
+                      type="text"
+                      value={quoteForm.ifscCode}
+                      onChange={e => setQuoteForm({ ...quoteForm, ifscCode: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none font-mono font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3 bg-[#efe7f7] border border-[#dfd5e8] rounded-lg text-[11px] text-[#5e3e8b] leading-relaxed">
+                  <strong>Executive Note:</strong> These bank credentials will appear on the generated commercial quotation PDF so the customer can execute RTGS / NEFT / IMPS wire transfers seamlessly.
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 4: LIVE FINANCIAL TOTALS SUMMARY BAR */}
+            <div className="bg-white border-2 border-[#5e3e8b] rounded-2xl p-6 shadow-md space-y-5">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#dfd5e8] pb-4">
+                <div>
+                  <h4 className="font-heading font-medium text-base text-[#2e075d]">
+                    Quotation Valuation Summary
+                  </h4>
+                  <p className="text-xs text-[#6e568b]">
+                    Reference: <span className="font-mono font-semibold text-[#5e3e8b]">{quoteForm.quoteNumber}</span> • Customer: <span className="font-medium text-[#2e075d]">{quoteForm.customerName || 'Pending'}</span>
+                  </p>
+                </div>
+
+                <div className="text-xs text-[#6e568b] bg-[#faf8fc] px-3.5 py-1.5 rounded-lg border border-[#dfd5e8]">
+                  Amount in Words: <span className="font-medium text-[#2e075d] italic">{amountToWords(quoteFinancials.grandTotal, quoteForm.currency)}</span>
+                </div>
+              </div>
+
+              {/* Totals Breakdown Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
+                <div className="bg-[#fcfbfe] p-3 rounded-lg border border-[#dfd5e8]">
+                  <span className="text-[10px] uppercase font-bold text-[#6e568b] block">Items Subtotal</span>
+                  <span className="font-mono font-bold text-sm text-[#2e075d]">
+                    {quoteForm.currencySymbol}{quoteFinancials.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="bg-[#fcfbfe] p-3 rounded-lg border border-[#dfd5e8]">
+                  <span className="text-[10px] uppercase font-bold text-[#6e568b] block">Total Discount</span>
+                  <span className="font-mono font-bold text-sm text-rose-600">
+                    - {quoteForm.currencySymbol}{quoteFinancials.discountTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="bg-[#fcfbfe] p-3 rounded-lg border border-[#dfd5e8]">
+                  <span className="text-[10px] uppercase font-bold text-[#6e568b] block">Taxable Value</span>
+                  <span className="font-mono font-bold text-sm text-[#2e075d]">
+                    {quoteForm.currencySymbol}{quoteFinancials.taxableAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="bg-[#fcfbfe] p-3 rounded-lg border border-[#dfd5e8]">
+                  <span className="text-[10px] uppercase font-bold text-[#6e568b] block">GST / Tax Amount</span>
+                  <span className="font-mono font-bold text-sm text-emerald-700">
+                    + {quoteForm.currencySymbol}{quoteFinancials.taxTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="bg-[#fcfbfe] p-3 rounded-lg border border-[#dfd5e8]">
+                  <span className="text-[10px] uppercase font-bold text-[#6e568b] block">Freight / Shipping</span>
+                  <span className="font-mono font-bold text-sm text-[#2e075d]">
+                    {quoteForm.currencySymbol}{quoteFinancials.freightCharges.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="bg-[#2e075d] text-white p-3 rounded-lg border border-[#2e075d] flex flex-col justify-center">
+                  <span className="text-[10px] uppercase font-bold text-purple-200 block">Grand Total</span>
+                  <span className="font-mono font-bold text-base sm:text-lg text-white">
+                    {quoteForm.currencySymbol}{quoteFinancials.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              {/* Bottom Action Footer */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#dfd5e8]">
+                <div className="flex items-center space-x-2 text-xs text-[#6e568b]">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>Authorized for PRAZTECH® Commercial Dispatches</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePreviewQuoteModal}
+                    className="px-4 py-2.5 rounded-lg border border-[#dfd5e8] bg-white text-[#2e075d] hover:bg-[#faf8fc] text-xs font-medium flex items-center space-x-1.5 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Eye className="w-4 h-4 text-[#5e3e8b]" />
+                    <span>Preview PDF Quote</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadQuotePDF}
+                    className="px-4 py-2.5 rounded-lg bg-[#5e3e8b] hover:bg-[#6e568b] text-white text-xs font-medium flex items-center space-x-1.5 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download PDF</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSendQuoteToCustomer}
+                    disabled={isSendingQuote}
+                    className="px-5 py-2.5 rounded-lg bg-[#2e075d] hover:bg-[#431477] text-white text-xs font-semibold flex items-center space-x-2 shadow-md transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {isSendingQuote ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Sending Quote...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        <span>Send Quote to Customer & Save in Portal</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* ── MODAL: PREVIEW COMMERCIAL QUOTATION ── */}
+      {isPreviewingQuoteModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-4xl w-full border border-[#dfd5e8] shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-in fade-in zoom-in-95">
+            {/* Modal Top Bar */}
+            <div className="flex items-center justify-between border-b border-[#dfd5e8] px-6 py-4 bg-[#faf8fc]">
+              <div className="flex items-center space-x-2.5">
+                <span className="font-heading font-medium text-base text-[#2e075d]">
+                  Official Commercial Quotation Preview
+                </span>
+                <span className="font-mono text-xs bg-[#efe7f7] text-[#5e3e8b] px-2.5 py-0.5 rounded border border-[#dfd5e8] font-bold">
+                  {quoteForm.quoteNumber}
+                </span>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadQuotePDF}
+                  className="px-3 py-1.5 rounded-lg bg-[#5e3e8b] hover:bg-[#6e568b] text-white text-xs font-medium flex items-center space-x-1.5 transition-colors cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="p-1.5 rounded-lg border border-[#dfd5e8] text-[#6e568b] hover:text-[#2e075d] hover:bg-white text-xs cursor-pointer"
+                  title="Print Quotation"
+                >
+                  <Printer className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewingQuoteModal(false)}
+                  className="p-1.5 text-[#9080a5] hover:text-[#2e075d] rounded-lg cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body: Rendered Letterhead Quotation Sheet */}
+            <div className="flex-1 overflow-y-auto p-6 sm:p-8 bg-[#f5f3f8]">
+              <div className="bg-white rounded-xl border border-[#dfd5e8] p-6 sm:p-8 shadow-sm space-y-6 max-w-3xl mx-auto text-xs text-[#2e075d]">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-4 border-b-2 border-[#5e3e8b]">
+                  <div>
+                    <h2 className="font-heading font-bold text-xl text-[#2e075d] tracking-tight">
+                      PRAZTECH® ENGINEERING
+                    </h2>
+                    <p className="text-xs text-[#6e568b] mt-0.5">Automotive Valve Rebuilding & Precision Tooling Manufacturer</p>
+                    <p className="text-[11px] text-[#5e3e8b] font-medium mt-1">ISO 9001:2015 Compliant Tooling Standards • Global Export Quality</p>
+                  </div>
+                  <div className="text-right text-[11px] text-[#6e568b] space-y-0.5">
+                    <div>Asaf Ali Rd, Delhi, 110002, India</div>
+                    <div>Email: <span className="text-[#2e075d] font-medium">xiscoenterprises@gmail.com</span></div>
+                    <div>Phone: <span className="text-[#2e075d] font-medium">+91 8744020102</span></div>
+                    <div>Web: <span className="text-[#5e3e8b] font-medium">https://www.praztechtools.com</span></div>
+                  </div>
+                </div>
+
+                {/* Quotation Title Banner */}
+                <div className="bg-[#2e075d] text-white py-2 text-center rounded font-heading font-bold text-sm tracking-wide">
+                  OFFICIAL COMMERCIAL PROFORMA QUOTATION
+                </div>
+
+                {/* Metadata Strip */}
+                <div className="bg-[#faf8fc] border border-[#dfd5e8] p-3 rounded-lg grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div>
+                    <span className="text-[10px] text-[#6e568b] uppercase font-bold block">Quotation No</span>
+                    <span className="font-mono font-bold text-[#5e3e8b]">{quoteForm.quoteNumber}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-[#6e568b] uppercase font-bold block">Quotation Date</span>
+                    <span className="font-medium text-[#2e075d]">{formatDateDDMMYY(quoteForm.quoteDate)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-[#6e568b] uppercase font-bold block">Valid Until</span>
+                    <span className="font-medium text-[#2e075d]">
+                      {formatDateDDMMYY(new Date(new Date(quoteForm.quoteDate).getTime() + quoteForm.validityDays * 86400000))} ({quoteForm.validityDays} Days)
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-[#6e568b] uppercase font-bold block">Currency</span>
+                    <span className="font-bold text-[#2e075d]">{quoteForm.currency} ({quoteForm.currencySymbol})</span>
+                  </div>
+                </div>
+
+                {/* Buyer / Consignee Details */}
+                <div className="border border-[#dfd5e8] rounded-lg p-4 space-y-2">
+                  <div className="text-[11px] font-bold uppercase text-[#5e3e8b] tracking-wider">
+                    Buyer / Consignee Details
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <div className="font-bold text-sm text-[#2e075d]">{quoteForm.customerName || 'Prospective Buyer'}</div>
+                      <div className="text-[#6e568b]">{quoteForm.company || 'Workshop / Machine Shop Client'}</div>
+                      <div className="text-[#6e568b] mt-1">
+                        {[quoteForm.address, quoteForm.city, quoteForm.state, quoteForm.country].filter(Boolean).join(', ') || 'India'}
+                      </div>
+                    </div>
+                    <div className="space-y-1 text-right sm:text-right">
+                      <div><span className="text-[#6e568b]">Email: </span><span className="font-mono font-medium">{quoteForm.email || '—'}</span></div>
+                      <div><span className="text-[#6e568b]">Phone: </span><span className="font-mono font-medium">{quoteForm.phone || quoteForm.whatsapp || '—'}</span></div>
+                      <div><span className="text-[#6e568b]">GSTIN: </span><span className="font-mono font-medium">{quoteForm.gstin || 'Unregistered / Not Provided'}</span></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Itemized Table */}
+                <div className="overflow-x-auto border border-[#dfd5e8] rounded-lg">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#2e075d] text-white text-[11px] font-bold">
+                      <tr>
+                        <th className="py-2.5 px-3">#</th>
+                        <th className="py-2.5 px-3">Model / SKU</th>
+                        <th className="py-2.5 px-3">Description & Specifications</th>
+                        <th className="py-2.5 px-3 text-center">Qty</th>
+                        <th className="py-2.5 px-3 text-right">Unit Rate ({quoteForm.currencySymbol})</th>
+                        <th className="py-2.5 px-3 text-center">Disc %</th>
+                        <th className="py-2.5 px-3 text-center">GST %</th>
+                        <th className="py-2.5 px-3 text-right">Total ({quoteForm.currencySymbol})</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#dfd5e8]">
+                      {quoteItems.map((it, idx) => (
+                        <tr key={it.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-[#faf8fc]'}>
+                          <td className="py-2.5 px-3 font-medium text-[#6e568b]">{idx + 1}</td>
+                          <td className="py-2.5 px-3 font-mono font-bold text-[#2e075d]">{it.modelNo}</td>
+                          <td className="py-2.5 px-3">
+                            <div className="font-medium text-[#2e075d]">{it.name}</div>
+                            {it.selectedVariant && (
+                              <div className="text-[11px] text-[#5e3e8b]">Option: {it.selectedVariant}</div>
+                            )}
+                            {it.notes && (
+                              <div className="text-[10px] text-[#6e568b] italic">Note: {it.notes}</div>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-bold text-[#2e075d]">{it.quantity}</td>
+                          <td className="py-2.5 px-3 text-right font-mono">
+                            {Number(it.unitPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-2.5 px-3 text-center text-[#6e568b]">
+                            {it.discountPercent ? `${it.discountPercent}%` : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 text-center text-[#6e568b]">{it.gstRate ? `${it.gstRate}%` : '0%'}</td>
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-[#2e075d]">
+                            {Number(it.lineTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Summary & Terms Section */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 pt-2">
+                  {/* Left Column: Words, Bank Details, Terms */}
+                  <div className="md:col-span-7 space-y-4">
+                    <div className="bg-[#fcfbfe] border border-[#dfd5e8] p-3 rounded-lg">
+                      <div className="text-[10px] uppercase font-bold text-[#6e568b]">Amount Chargeable (in words)</div>
+                      <div className="font-semibold text-xs text-[#2e075d] italic mt-0.5">
+                        {amountToWords(quoteFinancials.grandTotal, quoteForm.currency)}
+                      </div>
+                    </div>
+
+                    <div className="bg-[#faf8fc] border border-[#dfd5e8] p-3 rounded-lg text-xs space-y-1">
+                      <div className="font-bold text-[#5e3e8b] text-[11px] uppercase tracking-wide">
+                        Direct Bank Wire Transfer (NEFT / RTGS / IMPS)
+                      </div>
+                      <div className="text-[#2e075d]">
+                        Bank: <span className="font-semibold">{quoteForm.bankName}</span> • Branch: <span className="font-medium">{quoteForm.branch}</span>
+                      </div>
+                      <div className="text-[#2e075d]">
+                        Beneficiary: <span className="font-bold">{quoteForm.accountName}</span>
+                      </div>
+                      <div className="font-mono text-[#2e075d]">
+                        A/C No: <span className="font-bold text-[#5e3e8b]">{quoteForm.accountNumber}</span> • IFSC: <span className="font-bold text-[#5e3e8b]">{quoteForm.ifscCode}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-[11px] text-[#6e568b] space-y-1">
+                      <div>• <strong>Payment Terms:</strong> {quoteForm.paymentTerms}</div>
+                      <div>• <strong>Delivery Lead Time:</strong> {quoteForm.deliveryTimeline}</div>
+                      <div>• <strong>Guarantee:</strong> 12 months manufacturer warranty against casting & grinding defects.</div>
+                      {quoteForm.generalNotes && (
+                        <div>• <strong>Remarks:</strong> {quoteForm.generalNotes}</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Financial Figures */}
+                  <div className="md:col-span-5 space-y-2 border border-[#dfd5e8] p-4 rounded-lg bg-[#fcfbfe] text-xs">
+                    <div className="flex justify-between text-[#6e568b]">
+                      <span>Items Subtotal:</span>
+                      <span className="font-mono font-medium text-[#2e075d]">
+                        {quoteForm.currencySymbol}{quoteFinancials.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+
+                    {quoteFinancials.discountTotal > 0 && (
+                      <div className="flex justify-between text-rose-600">
+                        <span>Total Discount:</span>
+                        <span className="font-mono font-medium">
+                          - {quoteForm.currencySymbol}{quoteFinancials.discountTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between text-[#6e568b]">
+                      <span>Taxable Value:</span>
+                      <span className="font-mono font-medium text-[#2e075d]">
+                        {quoteForm.currencySymbol}{quoteFinancials.taxableAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between text-emerald-700">
+                      <span>GST / Taxes:</span>
+                      <span className="font-mono font-medium">
+                        + {quoteForm.currencySymbol}{quoteFinancials.taxTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+
+                    {quoteFinancials.freightCharges > 0 && (
+                      <div className="flex justify-between text-[#6e568b]">
+                        <span>Freight & Handling:</span>
+                        <span className="font-mono font-medium text-[#2e075d]">
+                          {quoteForm.currencySymbol}{quoteFinancials.freightCharges.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="pt-2 border-t border-[#dfd5e8] flex justify-between items-center text-sm font-bold text-[#2e075d] bg-[#efe7f7] p-2.5 rounded">
+                      <span>TOTAL PAYABLE:</span>
+                      <span className="font-mono text-base text-[#5e3e8b]">
+                        {quoteForm.currencySymbol}{quoteFinancials.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+
+                    <div className="pt-6 text-center text-xs text-[#6e568b]">
+                      <div className="font-semibold text-[#2e075d]">For PRAZTECH® ENGINEERING</div>
+                      <div className="h-10"></div>
+                      <div className="border-t border-dashed border-[#dfd5e8] pt-1 text-[10px] text-[#9080a5]">
+                        Authorized Signatory • Commercial Sales Desk
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer Disclaimer */}
+                <div className="pt-4 border-t border-[#dfd5e8] text-center text-[10px] text-[#9080a5]">
+                  This is an official computer-generated commercial quotation issued electronically by PRAZTECH® Engineering.
+                  All prices and terms are valid as stated.
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Bottom Actions */}
+            <div className="border-t border-[#dfd5e8] px-6 py-4 bg-white flex flex-wrap items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setIsPreviewingQuoteModal(false)}
+                className="px-4 py-2 rounded-lg border border-[#dfd5e8] text-xs font-medium text-[#6e568b] hover:bg-[#faf8fc] cursor-pointer"
+              >
+                Close Preview
+              </button>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadQuotePDF}
+                  className="px-4 py-2 rounded-lg bg-[#5e3e8b] hover:bg-[#6e568b] text-white text-xs font-medium flex items-center space-x-1.5 transition-colors cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download PDF Quote</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSendQuoteToCustomer}
+                  disabled={isSendingQuote}
+                  className="px-5 py-2 rounded-lg bg-[#2e075d] hover:bg-[#431477] text-white text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{isSendingQuote ? 'Sending Quote...' : 'Send Quote & Record in Portal'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── MODAL: INSPECT ENQUIRY DETAILS ── */}
       {inspectingEnquiry && (

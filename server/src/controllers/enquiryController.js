@@ -148,7 +148,7 @@ const createEnquiry = async (req, res, next) => {
         attachmentUrl: cItem.attachmentUrl || ''
       })),
       generalNotes: generalNotes.trim(),
-      status: 'Review Pending',
+      status: req.body.status || 'Review Pending',
       pdfUrl: `/api/enquiries/${referenceNumber}/download`,
       consent: {
         accepted: true,
