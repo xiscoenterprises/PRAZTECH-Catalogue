@@ -3,6 +3,13 @@ const fs = require('fs');
 const path = require('path');
 const { resolveProductImagePath } = require('./imageResolver');
 
+const cleanText = (str) => {
+  if (!str) return '';
+  return String(str)
+    .replace(/₹/g, 'Rs. ')
+    .replace(/[\u20B9]/g, 'Rs. ');
+};
+
 const generateEnquiryPDF = async (enquiryData, outputPath) => {
   return new Promise((resolve, reject) => {
     try {
@@ -61,16 +68,20 @@ const generateEnquiryPDF = async (enquiryData, outputPath) => {
       doc.moveTo(40, 110).lineTo(555, 110).strokeColor(brandAccent).lineWidth(1.5).stroke();
 
       // --- DOCUMENT TITLE BANNER ---
+      const isQuotation = enquiryData.status === 'Quotation Dispatched' || (enquiryData.generalNotes && enquiryData.generalNotes.includes('COMMERCIAL QUOTATION'));
+      const bannerTitle = isQuotation ? 'OFFICIAL COMMERCIAL PROFORMA QUOTATION' : 'PRODUCT ENQUIRY / REQUEST FOR QUOTATION';
+      const refLabel = isQuotation ? 'Quotation Reference:' : 'Enquiry Reference:';
+
       doc.rect(40, 120, 515, 32).fill(brandPrimary);
       doc.fillColor('#ffffff').fontSize(13).font('Helvetica-Bold');
-      doc.text('PRODUCT ENQUIRY / REQUEST FOR QUOTATION', 45, 130, { align: 'center', width: 505 });
+      doc.text(bannerTitle, 45, 130, { align: 'center', width: 505 });
 
       // Reference & Date Box
       doc.rect(40, 158, 515, 26).fill(bgLight);
       doc.rect(40, 158, 515, 26).strokeColor(borderLight).lineWidth(0.5).stroke();
 
       doc.fillColor(textDark).fontSize(9).font('Helvetica-Bold');
-      doc.text('Enquiry Reference:', 50, 166);
+      doc.text(refLabel, 50, 166);
       doc.fillColor(brandAccent).font('Helvetica-Bold').text(enquiryData.referenceNumber, 150, 166);
 
       const subDate = new Date(enquiryData.submittedAt || Date.now()).toLocaleString('en-IN', {
@@ -210,7 +221,7 @@ const generateEnquiryPDF = async (enquiryData, outputPath) => {
 
         // Notes
         doc.font('Helvetica').fontSize(7.5).fillColor(textMuted);
-        doc.text(item.notes || '—', 475, y + 14, { width: 75, height: 24, ellipsis: true });
+        doc.text(cleanText(item.notes) || '—', 475, y + 14, { width: 75, height: 24, ellipsis: true });
 
         y += rowHeight;
       });
@@ -243,7 +254,7 @@ const generateEnquiryPDF = async (enquiryData, outputPath) => {
 
           doc.text(specParts.join(' | ') || 'No extra specs specified', 50, y + 20, { width: 495 });
           if (cItem.notes) {
-            doc.text(`Notes: ${cItem.notes}`, 50, y + 34, { width: 495 });
+            doc.text(`Notes: ${cleanText(cItem.notes)}`, 50, y + 34, { width: 495 });
           }
 
           y += 58;
@@ -258,7 +269,7 @@ const generateEnquiryPDF = async (enquiryData, outputPath) => {
         doc.fillColor(brandPrimary).fontSize(10).font('Helvetica-Bold').text('SPECIAL INSTRUCTIONS / GENERAL NOTES', 40, y);
         y += 15;
         doc.rect(40, y, 515, 36).strokeColor(borderLight).lineWidth(0.5).stroke();
-        doc.fillColor(textDark).fontSize(8).font('Helvetica').text(enquiryData.generalNotes, 50, y + 8, { width: 495 });
+        doc.fillColor(textDark).fontSize(8).font('Helvetica').text(cleanText(enquiryData.generalNotes), 50, y + 8, { width: 495 });
         y += 45;
       }
 
@@ -271,9 +282,9 @@ const generateEnquiryPDF = async (enquiryData, outputPath) => {
       doc.text('IMPORTANT NOTICE:', 50, y + 6);
       doc.font('Helvetica').fillColor(textMuted);
       doc.text(
-        'This document is a formal Product Enquiry / Request for Quotation (RFQ) submitted by the customer. ' +
-        'It does NOT constitute an invoice, order confirmation, or formal price quotation. ' +
-        'PRAZTECH® Engineering will review specifications, current stock, and custom tooling requirements before issuing a formal quotation.',
+        isQuotation
+          ? 'This document is an official Commercial Proforma Quotation issued by PRAZTECH® Engineering. All tooling pricing, specifications, and taxes are valid as stated.'
+          : 'This document is a formal Product Enquiry / Request for Quotation (RFQ) submitted by the customer. It does NOT constitute an invoice, order confirmation, or formal price quotation. PRAZTECH® Engineering will review specifications, current stock, and custom tooling requirements before issuing a formal quotation.',
         50, y + 17, { width: 495 }
       );
 

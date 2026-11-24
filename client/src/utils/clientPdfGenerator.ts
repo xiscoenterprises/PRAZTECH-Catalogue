@@ -433,97 +433,75 @@ export const generateClientSideQuotationPDF = async (quote: QuotationDetails): P
   const isINR = quote.currency === 'INR' || quote.currencySymbol === '₹';
   const currencySym = isINR ? 'Rs. ' : (quote.currencySymbol || '$ ');
 
-  // Pre-load official company logo and all product photos asynchronously
-  const [logoData, ...itemImages] = await Promise.all([
-    loadBase64Image('/images/logo-black.png'),
-    ...quote.items.map(it => it.image ? loadBase64Image(it.image) : Promise.resolve(null))
-  ]);
+  // Pre-load product photos asynchronously
+  const itemImages = await Promise.all(
+    quote.items.map(it => (it.image ? loadBase64Image(it.image) : Promise.resolve(null)))
+  );
 
-  // 1. Header Banner
-  if (logoData) {
-    try {
-      doc.addImage(logoData, 'PNG', startX, 10, 48, 14);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-      doc.text('Automotive Valve Rebuilding & Precision Tooling Manufacturer', startX, 28);
-    } catch {
-      doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(16);
-      doc.text('PRAZTECH® ENGINEERING', startX, 17);
+  // 1. Header Banner (Identical layout and typography to Quotations & RFQs PDF)
+  doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('PRAZTECH® ENGINEERING', startX, 18);
 
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-      doc.text('Automotive Valve Rebuilding & Precision Tooling Manufacturer', startX, 23);
-    }
-  } else {
-    doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.text('PRAZTECH® ENGINEERING', startX, 17);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-    doc.text('Automotive Valve Rebuilding & Precision Tooling Manufacturer', startX, 23);
-  }
-
-  // Business Contacts (Right aligned) - Explicitly including official website
-  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
   doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text('Asaf Ali Rd, Delhi, 110002, India', 210 - startX, 14, { align: 'right' });
-  doc.text('Email: xiscoenterprises@gmail.com', 210 - startX, 18.5, { align: 'right' });
-  doc.text('Phone / WhatsApp: +91 8744020102', 210 - startX, 23, { align: 'right' });
-  doc.text('Web: https://www.praztechtools.com', 210 - startX, 27.5, { align: 'right' });
+  doc.text('Automotive Valve Rebuilding & Precision Tooling Manufacturer', startX, 23);
 
-  // Header Divider Line
+  // Business Contacts (Right aligned - Identical to Quotations & RFQs PDF)
+  doc.setFontSize(8);
+  doc.text('Asaf Ali Rd, Delhi, 110002, India', 210 - startX, 15, { align: 'right' });
+  doc.text('Email: xiscoenterprises@gmail.com', 210 - startX, 19.5, { align: 'right' });
+  doc.text('Phone: +91 8744020102', 210 - startX, 24, { align: 'right' });
+  doc.text('Web: https://www.praztechtools.com', 210 - startX, 28.5, { align: 'right' });
+
+  // Header Divider Line (Identical to Quotations & RFQs PDF)
   doc.setDrawColor(brandAccent[0], brandAccent[1], brandAccent[2]);
   doc.setLineWidth(0.5);
-  doc.line(startX, 31, 210 - startX, 31);
+  doc.line(startX, 32, 210 - startX, 32);
 
-  // 2. Document Title Banner
+  // 2. Document Title Banner (Identical to Quotations & RFQs PDF)
   doc.setFillColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-  doc.rect(startX, 34, contentWidth, 8, 'F');
+  doc.rect(startX, 35, contentWidth, 8, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10.5);
-  doc.text('OFFICIAL COMMERCIAL QUOTATION', 105, 39.5, { align: 'center' });
+  doc.text('OFFICIAL COMMERCIAL PROFORMA QUOTATION', 105, 40.5, { align: 'center' });
 
-  // 3. Metadata Strip (Quote No, Date, Validity, Currency)
+  // 3. Reference Strip (Identical to Quotations & RFQs PDF)
   doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
   doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
   doc.setLineWidth(0.3);
-  doc.rect(startX, 44, contentWidth, 8, 'FD');
+  doc.rect(startX, 45, contentWidth, 8, 'FD');
 
-  doc.setFontSize(8);
+  doc.setFontSize(8.5);
   doc.setTextColor(textDark[0], textDark[1], textDark[2]);
   doc.setFont('helvetica', 'bold');
-  doc.text('Quotation No: ', startX + 3, 49.2);
+  doc.text('Quotation Ref: ', startX + 3, 50.2);
 
   doc.setTextColor(brandAccent[0], brandAccent[1], brandAccent[2]);
-  doc.text(quote.quoteNumber || 'PRZ-QT-PENDING', startX + 26, 49.2);
+  doc.text(quote.quoteNumber || 'PRZ-QT-PENDING', startX + 28, 50.2);
 
   doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Date: ', 78, 49.2);
+  doc.text('Date: ', 88, 50.2);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text(quote.quoteDate || formatDateDDMMYY(Date.now()), 88, 49.2);
+  doc.text(quote.quoteDate || formatDateDDMMYY(Date.now()), 98, 50.2);
 
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
   doc.setFont('helvetica', 'bold');
-  doc.text('Valid Until: ', 118, 49.2);
+  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+  doc.text('Valid: ', 128, 50.2);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text(quote.validUntil || '30 Days from issue', 135, 49.2);
+  doc.text(quote.validUntil || '30 Days', 138, 50.2);
 
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
   doc.setFont('helvetica', 'bold');
-  doc.text('Currency: ', 165, 49.2);
+  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+  doc.text('Currency: ', 166, 50.2);
+  doc.setFont('helvetica', 'normal');
   doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-  doc.text(`${quote.currency || 'INR'} (${currencySym.trim()})`, 180, 49.2);
+  doc.text(`${quote.currency || 'INR'}`, 181, 50.2);
 
   // 4. Buyer / Consignee Details Box
   let y = 55;

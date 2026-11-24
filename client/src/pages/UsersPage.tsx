@@ -662,6 +662,8 @@ export const UsersPage: React.FC = () => {
 
     setIsSendingQuote(true);
 
+    const safeCur = quoteForm.currency === 'INR' || quoteForm.currencySymbol === '₹' ? 'Rs. ' : (quoteForm.currencySymbol || '$ ');
+
     const catalogueItems = quoteItems
       .filter(it => !it.isCustom)
       .map(it => ({
@@ -677,11 +679,11 @@ export const UsersPage: React.FC = () => {
           lineTotal: it.lineTotal
         },
         quantity: it.quantity,
-        notes: `[PRICED: ${quoteForm.currencySymbol}${it.unitPrice} each, Disc ${it.discountPercent}%, GST ${it.gstRate}%, Line Total ${quoteForm.currencySymbol}${it.lineTotal}] ${it.notes || ''}`.trim(),
+        notes: `[PRICED: ${safeCur}${it.unitPrice} each, Disc ${it.discountPercent}%, GST ${it.gstRate}%, Line Total ${safeCur}${it.lineTotal}] ${it.notes || ''}`.trim(),
         productSnapshot: {
           ...it,
           currency: quoteForm.currency,
-          currencySymbol: quoteForm.currencySymbol
+          currencySymbol: safeCur
         }
       }));
 
@@ -692,13 +694,13 @@ export const UsersPage: React.FC = () => {
         specifications: it.selectedVariant || '',
         quantity: it.quantity,
         intendedApplication: 'Custom Machining / Valve Rebuilding',
-        notes: `[PRICED: ${quoteForm.currencySymbol}${it.unitPrice} each, Line Total ${quoteForm.currencySymbol}${it.lineTotal}] ${it.notes || ''}`.trim()
+        notes: `[PRICED: ${safeCur}${it.unitPrice} each, Line Total ${safeCur}${it.lineTotal}] ${it.notes || ''}`.trim()
       }));
 
     const generalNotesWithCommercials =
       `OFFICIAL COMMERCIAL QUOTATION: ${quoteForm.quoteNumber}\n` +
-      `Grand Total: ${quoteForm.currencySymbol}${quoteFinancials.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })} (${amountToWords(quoteFinancials.grandTotal, quoteForm.currency)})\n` +
-      `Subtotal: ${quoteForm.currencySymbol}${quoteFinancials.subtotal} | Tax: ${quoteForm.currencySymbol}${quoteFinancials.taxTotal} | Freight: ${quoteForm.currencySymbol}${quoteFinancials.freightCharges}\n` +
+      `Grand Total: ${safeCur}${quoteFinancials.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })} (${amountToWords(quoteFinancials.grandTotal, quoteForm.currency)})\n` +
+      `Subtotal: ${safeCur}${quoteFinancials.subtotal} | Tax: ${safeCur}${quoteFinancials.taxTotal} | Freight: ${safeCur}${quoteFinancials.freightCharges}\n` +
       `Payment Terms: ${quoteForm.paymentTerms}\n` +
       `Delivery: ${quoteForm.deliveryTimeline}\n` +
       `Validity: ${quoteForm.validityDays} Days\n` +
