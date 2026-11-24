@@ -4108,12 +4108,13 @@ export const UsersPage: React.FC = () => {
             <div className="flex-1 overflow-y-auto p-6 sm:p-8 bg-[#f5f3f8]">
               <div className="bg-white rounded-xl border border-[#dfd5e8] p-6 sm:p-8 shadow-sm space-y-6 max-w-3xl mx-auto text-xs text-[#2e075d]">
                 {/* Header */}
-                <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-4 border-b-2 border-[#5e3e8b]">
-                  <div>
-                    <h2 className="font-heading font-bold text-xl text-[#2e075d] tracking-tight">
-                      PRAZTECH® ENGINEERING
-                    </h2>
-                    <p className="text-xs text-[#6e568b] mt-0.5">Automotive Valve Rebuilding & Precision Tooling Manufacturer</p>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b-2 border-[#5e3e8b]">
+                  <div className="flex flex-col justify-center">
+                    <img
+                      src="/images/logo-black.png"
+                      alt="PRAZTECH® Engineering"
+                      className="h-8 w-auto object-contain"
+                    />
                   </div>
                   <div className="text-right text-[11px] text-[#6e568b] space-y-0.5">
                     <div>Asaf Ali Rd, Delhi, 110002, India</div>

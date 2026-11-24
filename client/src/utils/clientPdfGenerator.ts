@@ -319,12 +319,16 @@ export interface QuotationDetails {
 const imageCache = new Map<string, string>();
 
 /**
- * Loads an image URL and converts it to a base64 JPEG Data URL for reliable embedding in jsPDF.
+ * Loads an image URL and converts it to a base64 Data URL (JPEG or PNG) for reliable embedding in jsPDF.
  */
-export const loadBase64Image = async (url: string): Promise<string | null> => {
+export const loadBase64Image = async (
+  url: string,
+  format: 'PNG' | 'JPEG' = 'JPEG'
+): Promise<string | null> => {
   if (!url || typeof window === 'undefined') return null;
+  const cacheKey = `${format}:${url}`;
   if (url.startsWith('data:image/')) return url;
-  if (imageCache.has(url)) return imageCache.get(url)!;
+  if (imageCache.has(cacheKey)) return imageCache.get(cacheKey)!;
 
   return new Promise(resolve => {
     const img = new Image();
@@ -339,11 +343,16 @@ export const loadBase64Image = async (url: string): Promise<string | null> => {
           resolve(null);
           return;
         }
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (format === 'JPEG') {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
         ctx.drawImage(img, 0, 0);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        imageCache.set(url, dataUrl);
+        const mimeType = format === 'PNG' ? 'image/png' : 'image/jpeg';
+        const dataUrl = canvas.toDataURL(mimeType, format === 'PNG' ? undefined : 0.85);
+        imageCache.set(cacheKey, dataUrl);
         resolve(dataUrl);
       } catch {
         resolve(null);
@@ -433,24 +442,35 @@ export const generateClientSideQuotationPDF = async (quote: QuotationDetails): P
   const isINR = quote.currency === 'INR' || quote.currencySymbol === '₹';
   const currencySym = isINR ? 'Rs. ' : (quote.currencySymbol || '$ ');
 
-  // Pre-load product photos asynchronously
-  const itemImages = await Promise.all(
-    quote.items.map(it => (it.image ? loadBase64Image(it.image) : Promise.resolve(null)))
-  );
+  // Pre-load company logo and product photos asynchronously
+  const [logoData, ...itemImages] = await Promise.all([
+    loadBase64Image('/images/logo-black.png', 'PNG'),
+    ...quote.items.map(it => (it.image ? loadBase64Image(it.image) : Promise.resolve(null)))
+  ]);
 
-  // 1. Header Banner (Identical layout and typography to Quotations & RFQs PDF)
-  doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text('PRAZTECH® ENGINEERING', startX, 18);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text('Automotive Valve Rebuilding & Precision Tooling Manufacturer', startX, 23);
+  // 1. Header Banner (Black Company Logo image)
+  if (logoData) {
+    try {
+      // /images/logo-black.png is 918x176 (aspect ratio ~5.216:1)
+      // width: 52mm, height: 10mm
+      doc.addImage(logoData, 'PNG', startX, 13, 52, 10);
+    } catch {
+      doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text('PRAZTECH® ENGINEERING', startX, 18);
+    }
+  } else {
+    doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.text('PRAZTECH® ENGINEERING', startX, 18);
+  }
 
   // Business Contacts (Right aligned - Identical to Quotations & RFQs PDF)
+  doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
+  doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
   doc.text('Asaf Ali Rd, Delhi, 110002, India', 210 - startX, 15, { align: 'right' });
   doc.text('Email: xiscoenterprises@gmail.com', 210 - startX, 19.5, { align: 'right' });
   doc.text('Phone: +91 8744020102', 210 - startX, 24, { align: 'right' });
@@ -503,15 +523,15 @@ export const generateClientSideQuotationPDF = async (quote: QuotationDetails): P
   doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
   doc.text(`${quote.currency || 'INR'}`, 181, 50.2);
 
-  // 4. Buyer / Consignee Details Box
-  let y = 55;
+  // 4. Buyer / Consignee Details Box (Zero overlap with Reference Strip above)
+  let y = 58;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
   doc.text('BUYER / CONSIGNEE DETAILS', startX, y);
 
-  y += 2.5;
-  const custBoxHeight = 24;
+  y += 3;
+  const custBoxHeight = 25;
   doc.setFillColor(255, 255, 255);
   doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
   doc.rect(startX, y, contentWidth, custBoxHeight, 'D');
@@ -571,13 +591,13 @@ export const generateClientSideQuotationPDF = async (quote: QuotationDetails): P
   doc.text(cust.gstin || 'Unregistered / Not Provided', col2ValX, y + 17.5);
 
   // 5. Items Table with Product Photos
-  y += custBoxHeight + 5;
+  y += custBoxHeight + 6;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
   doc.text('SCHEDULE OF TOOLING PRODUCTS & RATES', startX, y);
 
-  y += 2.5;
+  y += 3;
   const thHeight = 6.5;
 
   const colNo = startX + 2;        // 16
