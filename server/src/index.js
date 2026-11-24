@@ -47,8 +47,10 @@ app.use(helmet({
 // Strict CORS Whitelist Configuration
 const defaultAllowedOrigins = [
   'http://localhost:3000',
+  'http://localhost:5001',
   'http://localhost:5173',
   'http://127.0.0.1:3000',
+  'http://127.0.0.1:5001',
   'http://127.0.0.1:5173'
 ];
 
@@ -65,6 +67,7 @@ app.use(cors({
     if (!origin) return callback(null, true);
     if (
       allowedOrigins.includes(origin) ||
+      /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin) ||
       origin.endsWith('.github.io') ||
       origin.endsWith('.vercel.app') ||
       origin.includes('praztechtools.com') ||
@@ -72,7 +75,7 @@ app.use(cors({
     ) {
       return callback(null, true);
     }
-    return callback(new Error(`CORS blocked: Origin ${origin} not permitted.`));
+    return callback(null, false);
   },
   credentials: true
 }));
