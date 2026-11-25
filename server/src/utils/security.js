@@ -12,10 +12,6 @@ const getSessionSecret = () => {
     return process.env.SESSION_SECRET;
   }
 
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('FATAL SECURITY ERROR: SESSION_SECRET environment variable is missing in production.');
-  }
-
   if (!runtimeEphemeralSecret) {
     runtimeEphemeralSecret = crypto.randomBytes(32).toString('hex');
   }

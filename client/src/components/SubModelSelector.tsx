@@ -8,6 +8,7 @@ interface SubModelSelectorProps {
   selectedSubModel: SubModel | null;
   onSelect: (subModel: SubModel) => void;
   variantOptionNames?: string[];
+  unselected?: boolean;
 }
 
 export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
@@ -15,7 +16,8 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
   subModels,
   selectedSubModel,
   onSelect,
-  variantOptionNames
+  variantOptionNames,
+  unselected = false
 }) => {
   const [guideOpen, setGuideOpen] = useState(false);
 
@@ -23,7 +25,7 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
 
   // 1. VSCCT (Valve Seat Cutter Sets - 14 Models)
   if (productSlug === 'vscct') {
-    const activeModel = selectedSubModel || subModels[0];
+    const activeModel = unselected ? null : (selectedSubModel || subModels[0]);
 
     return (
       <div className="space-y-3">
@@ -32,14 +34,14 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
             Cutter set model
           </span>
           <span className="text-xs text-industrial-500 font-mono">
-            14 application sets
+            {subModels.length} application sets
           </span>
         </div>
 
         {/* Model SKU Pills */}
         <div className="flex flex-wrap gap-1.5">
           {subModels.map((m, idx) => {
-            const isSelected = activeModel.modelNo === m.modelNo;
+            const isSelected = !unselected && activeModel?.modelNo === m.modelNo;
             return (
               <button
                 key={idx}
@@ -59,7 +61,7 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
         </div>
 
         {/* Selected Set Breakdown Card */}
-        {activeModel && (
+        {!unselected && activeModel && (
           <div className="bg-industrial-50 border border-industrial-200 rounded-lg p-3.5 text-xs space-y-2">
             <div className="flex items-center justify-between pb-2 border-b border-industrial-200">
               <div className="flex items-center gap-2">
@@ -99,10 +101,10 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
 
   // 2. VSCS (Car & Bike Engine Cutter Sets - 5 Sizes)
   if (productSlug === 'vscs') {
-    const isHSS = selectedSubModel?.material?.includes('HSS') || selectedSubModel?.modelNo?.includes('HSS');
-    const selectedIdx = subModels.findIndex(m => m.modelHCS === selectedSubModel?.modelNo || m.modelHSS === selectedSubModel?.modelNo);
-    const activeIndex = selectedIdx !== -1 ? selectedIdx : 0;
-    const activeSet = subModels[activeIndex] || subModels[0];
+    const isHSS = !unselected && Boolean(selectedSubModel?.material?.includes('HSS') || selectedSubModel?.modelNo?.includes('HSS'));
+    const selectedIdx = unselected ? -1 : subModels.findIndex(m => m.modelHCS === selectedSubModel?.modelNo || m.modelHSS === selectedSubModel?.modelNo);
+    const activeIndex = selectedIdx !== -1 ? selectedIdx : (unselected ? -1 : 0);
+    const activeSet = unselected ? null : (subModels[activeIndex !== -1 ? activeIndex : 0] || subModels[0]);
 
     const handleSetSelect = (idx: number) => {
       const set = subModels[idx];
@@ -112,9 +114,10 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
     };
 
     const handleMaterialSelect = (materialType: 'HCS' | 'HSS') => {
-      const modelNo = materialType === 'HSS' ? activeSet.modelHSS : activeSet.modelHCS;
+      const set = activeSet || subModels[0];
+      const modelNo = materialType === 'HSS' ? set.modelHSS : set.modelHCS;
       const material = materialType === 'HSS' ? 'High Speed Steel (HSS)' : 'High Carbon Steel (HCS)';
-      onSelect({ ...activeSet, modelNo, material });
+      onSelect({ ...set, modelNo, material });
     };
 
     return (
@@ -126,7 +129,7 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
           </span>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             {subModels.map((m, idx) => {
-              const isSelected = idx === activeIndex;
+              const isSelected = !unselected && idx === activeIndex;
               const count = m.modelHCS ? m.modelHCS.replace('VSCHCS', '') : String(idx + 1);
               return (
                 <button
@@ -159,51 +162,53 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
               type="button"
               onClick={() => handleMaterialSelect('HCS')}
               className={`p-2.5 rounded-lg border text-left transition-colors ${
-                !isHSS
+                !unselected && !isHSS
                   ? 'border-industrial-900 bg-industrial-50 font-medium'
                   : 'border-industrial-200 bg-white hover:border-industrial-300'
               }`}
             >
               <div className="flex items-center justify-between text-xs text-industrial-900">
                 <span>High Carbon Steel (HCS)</span>
-                {!isHSS && <Check className="w-3.5 h-3.5 text-industrial-900" />}
+                {!unselected && !isHSS && <Check className="w-3.5 h-3.5 text-industrial-900" />}
               </div>
-              <div className="text-[11px] font-mono text-industrial-500 mt-0.5">{activeSet.modelHCS}</div>
+              <div className="text-[11px] font-mono text-industrial-500 mt-0.5">{activeSet?.modelHCS || subModels[0]?.modelHCS}</div>
             </button>
 
             <button
               type="button"
               onClick={() => handleMaterialSelect('HSS')}
               className={`p-2.5 rounded-lg border text-left transition-colors ${
-                isHSS
+                !unselected && isHSS
                   ? 'border-industrial-900 bg-industrial-50 font-medium'
                   : 'border-industrial-200 bg-white hover:border-industrial-300'
               }`}
             >
               <div className="flex items-center justify-between text-xs text-industrial-900">
                 <span>High Speed Steel (HSS)</span>
-                {isHSS && <Check className="w-3.5 h-3.5 text-industrial-900" />}
+                {!unselected && isHSS && <Check className="w-3.5 h-3.5 text-industrial-900" />}
               </div>
-              <div className="text-[11px] font-mono text-industrial-500 mt-0.5">{activeSet.modelHSS}</div>
+              <div className="text-[11px] font-mono text-industrial-500 mt-0.5">{activeSet?.modelHSS || subModels[0]?.modelHSS}</div>
             </button>
           </div>
         </div>
 
         {/* Specification Details */}
-        <div className="p-2.5 bg-industrial-50 border border-industrial-200 rounded-lg text-xs space-y-1">
-          <strong className="text-industrial-900 block font-medium">Included:</strong>
-          <p className="text-industrial-600 leading-relaxed text-[11.5px]">{activeSet.cutters}</p>
-          <p className="text-industrial-500 text-[11px]">Pilots: {activeSet.pilots}</p>
-        </div>
+        {!unselected && activeSet && (
+          <div className="p-2.5 bg-industrial-50 border border-industrial-200 rounded-lg text-xs space-y-1">
+            <strong className="text-industrial-900 block font-medium">Included:</strong>
+            <p className="text-industrial-600 leading-relaxed text-[11.5px]">{activeSet.cutters}</p>
+            <p className="text-industrial-500 text-[11px]">Pilots: {activeSet.pilots}</p>
+          </div>
+        )}
       </div>
     );
   }
 
   // 3. HOST (Silicon Carbide Honing Stones - 4 Grits)
   if (productSlug === 'host') {
-    const selectedRange = selectedSubModel?.range || subModels[0].range;
-    const currentSubModel = subModels.find(m => m.range === selectedRange) || subModels[0];
-    const currentGritKey = selectedSubModel?.grit ? `grit${selectedSubModel.grit.split(' ')[0]}` : 'grit120';
+    const selectedRange = unselected ? null : (selectedSubModel?.range || subModels[0].range);
+    const currentSubModel = unselected ? null : (subModels.find(m => m.range === selectedRange) || subModels[0]);
+    const currentGritKey = unselected ? null : (selectedSubModel?.grit ? `grit${selectedSubModel.grit.split(' ')[0]}` : 'grit120');
 
     const gritOptions = [
       { key: 'grit120', label: '120 coarse', desc: 'Rapid stock removal' },
@@ -213,8 +218,9 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
     ] as const;
 
     const handleRangeSelect = (m: SubModel) => {
-      const targetGrit = (currentGritKey in m) ? (m as any)[currentGritKey] : m.grit120;
-      const gritLabel = gritOptions.find(g => g.key === currentGritKey)?.label || '120 coarse';
+      const gKey = currentGritKey || 'grit120';
+      const targetGrit = (gKey in m) ? (m as any)[gKey] : m.grit120;
+      const gritLabel = gritOptions.find(g => g.key === gKey)?.label || '120 coarse';
       onSelect({
         ...m,
         sku: targetGrit,
@@ -223,9 +229,10 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
     };
 
     const handleGritSelect = (gKey: 'grit120' | 'grit180' | 'grit220' | 'grit320', label: string) => {
-      const sku = (currentSubModel as any)[gKey] || currentSubModel.grit120;
+      const activeSm = currentSubModel || subModels[0];
+      const sku = (activeSm as any)[gKey] || activeSm.grit120;
       onSelect({
-        ...currentSubModel,
+        ...activeSm,
         sku,
         grit: label
       });
@@ -240,7 +247,7 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
           </span>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {subModels.map((m, idx) => {
-              const isSelected = m.range === selectedRange;
+              const isSelected = !unselected && m.range === selectedRange;
               return (
                 <button
                   key={idx}
@@ -269,7 +276,7 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
           </span>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {gritOptions.map(g => {
-              const isSelected = (selectedSubModel?.grit || '120 coarse') === g.label;
+              const isSelected = !unselected && (selectedSubModel?.grit || '120 coarse') === g.label;
               return (
                 <button
                   key={g.key}
@@ -290,26 +297,28 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
         </div>
 
         {/* Selected Summary */}
-        <div className="p-2.5 bg-industrial-50 border border-industrial-200 rounded-lg text-xs flex items-center justify-between">
-          <div>
-            <span className="text-industrial-500">Selected SKU: </span>
-            <strong className="font-mono text-industrial-900 font-medium">
-              {(currentSubModel as any)[currentGritKey] || currentSubModel.grit120}
-            </strong>
+        {!unselected && currentSubModel && currentGritKey && (
+          <div className="p-2.5 bg-industrial-50 border border-industrial-200 rounded-lg text-xs flex items-center justify-between">
+            <div>
+              <span className="text-industrial-500">Selected SKU: </span>
+              <strong className="font-mono text-industrial-900 font-medium">
+                {(currentSubModel as any)[currentGritKey] || currentSubModel.grit120}
+              </strong>
+            </div>
+            <span className="text-[11px] font-mono text-industrial-600 bg-white px-2 py-0.5 rounded border border-industrial-200">
+              {currentSubModel.dimensions}
+            </span>
           </div>
-          <span className="text-[11px] font-mono text-industrial-600 bg-white px-2 py-0.5 rounded border border-industrial-200">
-            {currentSubModel.dimensions}
-          </span>
-        </div>
+        )}
       </div>
     );
   }
 
   // 4. DHOST (Diamond Honing Stones - Medium 180 vs Fine 220)
   if (productSlug === 'dhost') {
-    const selectedRange = selectedSubModel?.range || subModels[0].range;
-    const currentSubModel = subModels.find(m => m.range === selectedRange) || subModels[0];
-    const isFine = selectedSubModel?.grade?.includes('Fine') || selectedSubModel?.grade?.includes('220');
+    const selectedRange = unselected ? null : (selectedSubModel?.range || subModels[0].range);
+    const currentSubModel = unselected ? null : (subModels.find(m => m.range === selectedRange) || subModels[0]);
+    const isFine = !unselected && Boolean(selectedSubModel?.grade?.includes('Fine') || selectedSubModel?.grade?.includes('220'));
 
     const handleRangeSelect = (m: SubModel) => {
       const sku = isFine ? m.grit220 : m.grit180;
@@ -318,9 +327,10 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
     };
 
     const handleGradeSelect = (gradeType: '180' | '220') => {
-      const sku = gradeType === '220' ? currentSubModel.grit220 : currentSubModel.grit180;
+      const activeSm = currentSubModel || subModels[0];
+      const sku = gradeType === '220' ? activeSm.grit220 : activeSm.grit180;
       const grade = gradeType === '220' ? 'Fine (220)' : 'Medium (180)';
-      onSelect({ ...currentSubModel, sku, grade });
+      onSelect({ ...activeSm, sku, grade });
     };
 
     return (
@@ -332,7 +342,7 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
           </span>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {subModels.map((m, idx) => {
-              const isSelected = m.range === selectedRange;
+              const isSelected = !unselected && m.range === selectedRange;
               return (
                 <button
                   key={idx}
@@ -364,55 +374,57 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
               type="button"
               onClick={() => handleGradeSelect('180')}
               className={`p-2.5 rounded-lg border text-left transition-colors ${
-                !isFine
+                !unselected && !isFine
                   ? 'border-industrial-900 bg-industrial-50 font-medium'
                   : 'border-industrial-200 bg-white hover:border-industrial-300'
               }`}
             >
               <div className="flex items-center justify-between text-xs text-industrial-900">
                 <span>Medium diamond (180 grit)</span>
-                {!isFine && <Check className="w-3.5 h-3.5 text-industrial-900" />}
+                {!unselected && !isFine && <Check className="w-3.5 h-3.5 text-industrial-900" />}
               </div>
-              <div className="text-[11px] font-mono text-industrial-500 mt-0.5">{currentSubModel.grit180}</div>
+              <div className="text-[11px] font-mono text-industrial-500 mt-0.5">{currentSubModel?.grit180 || subModels[0]?.grit180}</div>
             </button>
 
             <button
               type="button"
               onClick={() => handleGradeSelect('220')}
               className={`p-2.5 rounded-lg border text-left transition-colors ${
-                isFine
+                !unselected && isFine
                   ? 'border-industrial-900 bg-industrial-50 font-medium'
                   : 'border-industrial-200 bg-white hover:border-industrial-300'
               }`}
             >
               <div className="flex items-center justify-between text-xs text-industrial-900">
                 <span>Fine diamond (220 grit)</span>
-                {isFine && <Check className="w-3.5 h-3.5 text-industrial-900" />}
+                {!unselected && isFine && <Check className="w-3.5 h-3.5 text-industrial-900" />}
               </div>
-              <div className="text-[11px] font-mono text-industrial-500 mt-0.5">{currentSubModel.grit220}</div>
+              <div className="text-[11px] font-mono text-industrial-500 mt-0.5">{currentSubModel?.grit220 || subModels[0]?.grit220}</div>
             </button>
           </div>
         </div>
 
         {/* Selected Summary */}
-        <div className="p-2.5 bg-industrial-50 border border-industrial-200 rounded-lg text-xs flex items-center justify-between">
-          <div>
-            <span className="text-industrial-500">Selected SKU: </span>
-            <strong className="font-mono text-industrial-900 font-medium">
-              {isFine ? currentSubModel.grit220 : currentSubModel.grit180}
-            </strong>
+        {!unselected && currentSubModel && (
+          <div className="p-2.5 bg-industrial-50 border border-industrial-200 rounded-lg text-xs flex items-center justify-between">
+            <div>
+              <span className="text-industrial-500">Selected SKU: </span>
+              <strong className="font-mono text-industrial-900 font-medium">
+                {isFine ? currentSubModel.grit220 : currentSubModel.grit180}
+              </strong>
+            </div>
+            <span className="text-[11px] font-mono text-industrial-600 bg-white px-2 py-0.5 rounded border border-industrial-200">
+              {currentSubModel.dimensions}
+            </span>
           </div>
-          <span className="text-[11px] font-mono text-industrial-600 bg-white px-2 py-0.5 rounded border border-industrial-200">
-            {currentSubModel.dimensions}
-          </span>
-        </div>
+        )}
       </div>
     );
   }
 
   // 5. Valve Seat Grinding Stones (vgs1116, vgs916, vgs716)
   if (productSlug === 'vgs1116' || productSlug === 'vgs916' || productSlug === 'vgs716') {
-    const currentColor = (selectedSubModel?.stoneColor || 'Pink') as 'Black' | 'Pink' | 'White';
+    const currentColor = unselected ? null : ((selectedSubModel?.stoneColor || 'Pink') as 'Black' | 'Pink' | 'White');
 
     const colorProfiles = {
       Black: {
@@ -446,7 +458,7 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
     const handleSizeSelect = (sm: SubModel) => {
       onSelect({
         ...sm,
-        stoneColor: currentColor
+        stoneColor: currentColor || 'Pink'
       });
     };
 
@@ -471,7 +483,7 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {(['Black', 'Pink', 'White'] as const).map(colorKey => {
               const profile = colorProfiles[colorKey];
-              const isSelected = currentColor === colorKey;
+              const isSelected = !unselected && currentColor === colorKey;
               return (
                 <button
                   key={colorKey}
@@ -497,7 +509,8 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
           </div>
 
           <div className="text-[11px] text-industrial-600 bg-industrial-50 border border-industrial-200 px-3 py-1.5 rounded-lg">
-            <strong>Best for: </strong>{colorProfiles[currentColor].suited}
+            <strong>Abrasive formulations: </strong>
+            {unselected ? 'Available in Silicon Carbide (Black), Pink Aluminium Oxide, and White High-Purity Pure Al₂O₃.' : `Best for: ${colorProfiles[currentColor!].suited}`}
           </div>
         </div>
 
@@ -514,9 +527,9 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
 
           <div className="flex flex-wrap gap-1.5">
             {subModels.map((m, idx) => {
-              const isSelected = selectedSubModel?.sizeInches
+              const isSelected = !unselected && (selectedSubModel?.sizeInches
                 ? selectedSubModel.sizeInches === m.sizeInches
-                : (selectedSubModel?.sizeMm ? selectedSubModel.sizeMm === m.sizeMm : idx === 0);
+                : (selectedSubModel?.sizeMm ? selectedSubModel.sizeMm === m.sizeMm : idx === 0));
 
               const mainLabel = m.sizeInches || m.sizeMm;
               const subLabel = m.sizeInches && m.sizeMm ? m.sizeMm : null;
@@ -634,7 +647,7 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {subModels.map((m, idx) => {
-            const isSelected = selectedSubModel?.modelNo === m.modelNo;
+            const isSelected = !unselected && selectedSubModel?.modelNo === m.modelNo;
             const isStar = m.modelNo?.includes('STAR') || m.drive === 'Star Drive';
             const driveTitle = isStar ? 'Star drive adapter' : 'Hex drive adapter';
             const imgSrc = isStar ? '/images/products/phsg-2.jpg' : '/images/products/phsg-3.jpg';
@@ -688,7 +701,7 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {subModels.map((m, idx) => {
-            const isSelected = selectedSubModel?.modelNo === m.modelNo;
+            const isSelected = !unselected && selectedSubModel?.modelNo === m.modelNo;
             return (
               <button
                 key={idx}
@@ -727,7 +740,7 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {subModels.map((m, idx) => {
-            const isSelected = selectedSubModel?.modelNo === m.modelNo;
+            const isSelected = !unselected && selectedSubModel?.modelNo === m.modelNo;
             return (
               <button
                 key={idx}
@@ -766,7 +779,7 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
         </span>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {subModels.map((m, idx) => {
-            const isSelected = selectedSubModel?.modelNo === m.modelNo;
+            const isSelected = !unselected && selectedSubModel?.modelNo === m.modelNo;
             return (
               <button
                 key={idx}
@@ -799,7 +812,7 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
         </span>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {subModels.map((m, idx) => {
-            const isSelected = selectedSubModel?.modelNo === m.modelNo;
+            const isSelected = !unselected && selectedSubModel?.modelNo === m.modelNo;
             return (
               <button
                 key={idx}
@@ -853,7 +866,7 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
 
   // If subModels define dimensions, render individual dimension selector rows:
   if (dimensionNames.length > 0) {
-    const activeModel = selectedSubModel || subModels[0];
+    const activeModel = unselected ? null : (selectedSubModel || subModels[0]);
 
     // Build map of dimension -> ordered unique list of values
     const dimensionValuesMap: Record<string, string[]> = {};
@@ -874,14 +887,16 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
 
     // Determine current selected value for each dimension
     const currentSelected: Record<string, string> = {};
-    dimensionNames.forEach(dim => {
-      const opts = activeModel?.options || {};
-      const key = Object.keys(opts).find(k => k.toLowerCase() === dim.toLowerCase());
-      const v = key
-        ? String(opts[key] ?? '').trim()
-        : String((activeModel as any)[dim.toLowerCase()] ?? (dim.toLowerCase() === 'size' ? (activeModel.sizeMm || activeModel.size) : '')).trim();
-      currentSelected[dim] = v || dimensionValuesMap[dim]?.[0] || '';
-    });
+    if (!unselected && activeModel) {
+      dimensionNames.forEach(dim => {
+        const opts = activeModel.options || {};
+        const key = Object.keys(opts).find(k => k.toLowerCase() === dim.toLowerCase());
+        const v = key
+          ? String(opts[key] ?? '').trim()
+          : String((activeModel as any)[dim.toLowerCase()] ?? (dim.toLowerCase() === 'size' ? (activeModel.sizeMm || activeModel.size) : '')).trim();
+        currentSelected[dim] = v || dimensionValuesMap[dim]?.[0] || '';
+      });
+    }
 
     const handleSelectDimensionValue = (dimName: string, chosenVal: string) => {
       const targetOptions = {
@@ -945,10 +960,12 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
             <div key={dimName} className="space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-industrial-800">
-                  {dimName}:{' '}
-                  <span className="text-brand-mauve font-mono font-bold ml-1">
-                    {activeVal || 'Select'}
-                  </span>
+                  {dimName}
+                  {!unselected && activeVal && (
+                    <span className="text-brand-mauve font-mono font-bold ml-1">
+                      : {activeVal}
+                    </span>
+                  )}
                 </span>
                 <span className="text-[11px] text-industrial-500 font-mono">
                   {vals.length} {vals.length === 1 ? 'option' : 'options'}
@@ -957,7 +974,7 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
 
               <div className="flex flex-wrap gap-2">
                 {vals.map(v => {
-                  const isSelected = String(activeVal).toLowerCase() === String(v).toLowerCase();
+                  const isSelected = !unselected && Boolean(activeVal && String(activeVal).toLowerCase() === String(v).toLowerCase());
 
                   // Check if this option is valid in combinations
                   const isCompatible = subModels.some(m => {
@@ -1003,7 +1020,7 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
         })}
 
         {/* Selected Variant Summary Footer */}
-        {activeModel && (
+        {!unselected && activeModel && (
           <div className="pt-2.5 border-t border-industrial-100 flex flex-wrap items-center justify-between gap-2 text-xs">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] text-industrial-500 font-medium">Selected SKU:</span>
@@ -1047,10 +1064,12 @@ export const SubModelSelector: React.FC<SubModelSelectorProps> = ({
             (m.carat ? `${m.modelNo || ''} (${m.carat})`.trim() : '') ||
             m.modelNo || sizeName || colorName || m.drive || m.range || `Option #${idx + 1}`;
 
-          const isSelected = (selectedSubModel?.modelNo && selectedSubModel.modelNo === m.modelNo) ||
-                             (selectedSubModel?.label && selectedSubModel.label === label) ||
-                             (selectedSubModel?.sizeMm && selectedSubModel.sizeMm === m.sizeMm && selectedSubModel?.color === m.color) ||
-                             JSON.stringify(selectedSubModel) === JSON.stringify(m);
+          const isSelected = !unselected && Boolean(
+            (selectedSubModel?.modelNo && selectedSubModel.modelNo === m.modelNo) ||
+            (selectedSubModel?.label && selectedSubModel.label === label) ||
+            (selectedSubModel?.sizeMm && selectedSubModel.sizeMm === m.sizeMm && selectedSubModel?.color === m.color) ||
+            (selectedSubModel && JSON.stringify(selectedSubModel) === JSON.stringify(m))
+          );
           return (
             <button
               key={idx}

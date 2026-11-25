@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
@@ -6,6 +6,7 @@ import {
   Unlock,
   ShieldCheck,
   Search,
+  ChevronDown,
   FileText,
   Download,
   Mail,
@@ -42,7 +43,10 @@ import {
   Printer,
   Copy,
   Check,
-  Send
+  Send,
+  Image as ImageIcon,
+  Share2,
+  Palette
 } from 'lucide-react';
 import { atlasService } from '../services/atlasService';
 import { formatDateDDMMYY } from '../utils/dateFormat';
@@ -52,6 +56,17 @@ import {
   QuotationDetails,
   QuotationLineItem
 } from '../utils/clientPdfGenerator';
+import {
+  ProductShowcaseConfig,
+  generateProductShowcaseCanvas,
+  generateProductShowcaseDataUrl,
+  downloadShowcaseImage,
+  copyCanvasImageToClipboard,
+  getToolVariantSectionData,
+  getInitialSubModel
+} from '../utils/quotationImageGenerator';
+import { SubModelSelector } from '../components/SubModelSelector';
+import { SubModel } from '../types';
 import initialCatalogueData from '../data/products.json';
 import initialCategoriesData from '../data/categories.json';
 import { ExecutiveAuthGate } from './executive/ExecutiveAuthGate';
@@ -62,6 +77,47 @@ import './UsersPage.css';
 const AUTH_TOKEN_KEY = 'praztech_admin_session_token';
 
 export type EnquiryStatus = 'Review Pending' | 'Quotation Dispatched' | 'Blueprint Review' | 'Order Confirmed' | 'Closed';
+
+export interface PastCommercialQuote {
+  id: string;
+  quoteNumber: string;
+  quoteDate: string;
+  customerName: string;
+  company: string;
+  email: string;
+  phone: string;
+  whatsapp?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  gstin?: string;
+  currency: string;
+  currencySymbol: string;
+  subtotal: number;
+  discountTotal: number;
+  taxableAmount: number;
+  taxTotal: number;
+  freightCharges: number;
+  grandTotal: number;
+  itemsCount: number;
+  items: QuotationLineItem[];
+  validityDays: number;
+  paymentTerms: string;
+  deliveryTimeline: string;
+  generalNotes?: string;
+  bankDetails?: {
+    bankName?: string;
+    accountName?: string;
+    accountNumber?: string;
+    ifscCode?: string;
+    branch?: string;
+  };
+  status: 'Dispatched' | 'Downloaded' | 'Draft';
+  createdAt: string;
+}
+
+const PAST_QUOTES_STORAGE_KEY = 'praztech_commercial_quotes_history_v1';
 
 export interface UserEnquiryItem {
   productId?: string;
@@ -156,7 +212,7 @@ const STATUS_STYLES: Record<string, string> = {
   'Completed': 'bg-blue-50 text-blue-900 border-blue-200'
 };
 
-type TabId = 'quotations' | 'directory' | 'catalogue' | 'new-listing' | 'create-quote';
+type TabId = 'quotations' | 'directory' | 'catalogue' | 'new-listing' | 'create-quote' | 'product-showcase';
 
 export const UsersPage: React.FC = () => {
   // Server-Side Authentication
@@ -177,7 +233,7 @@ export const UsersPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab');
   const initialActiveTab: TabId =
-    rawTab === 'directory' || rawTab === 'catalogue' || rawTab === 'new-listing' || rawTab === 'create-quote'
+    rawTab === 'directory' || rawTab === 'catalogue' || rawTab === 'new-listing' || rawTab === 'create-quote' || rawTab === 'product-showcase'
       ? rawTab
       : 'quotations';
   const [activeTab, setActiveTab] = useState<TabId>(initialActiveTab);
@@ -359,6 +415,99 @@ export const UsersPage: React.FC = () => {
   const [isPreviewingQuoteModal, setIsPreviewingQuoteModal] = useState(false);
   const [isSendingQuote, setIsSendingQuote] = useState(false);
   const [quoteCopied, setQuoteCopied] = useState(false);
+
+  // Past Commercial Quotations History
+  const [pastQuotes, setPastQuotes] = useState<PastCommercialQuote[]>(() => {
+    try {
+      const stored = localStorage.getItem(PAST_QUOTES_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Could not load past quotes from storage', e);
+    }
+    return [
+      {
+        id: 'PQ-INITIAL-1',
+        quoteNumber: 'PRZ-QT-20261124-1014',
+        quoteDate: '2026-11-24',
+        customerName: 'Anand Kumar',
+        company: 'Precision Head Works & Rebuilders',
+        email: 'anand@dieselservices.com',
+        phone: '+91 9876543210',
+        whatsapp: '+91 9876543210',
+        city: 'Delhi',
+        state: 'Delhi',
+        country: 'India',
+        address: 'Plot 14, Mayapuri Industrial Area Phase II',
+        gstin: '07AAAAA0000A1Z5',
+        currency: 'INR',
+        currencySymbol: '₹',
+        subtotal: 42500,
+        discountTotal: 2125,
+        taxableAmount: 40375,
+        taxTotal: 7267.5,
+        freightCharges: 0,
+        grandTotal: 47642.5,
+        itemsCount: 1,
+        items: [
+          {
+            id: 'quote-item-default',
+            isCustom: false,
+            modelNo: 'PSH-VGKP-H',
+            name: 'All in One 9/16" and 11/16" Valve Seat Grinding Kit',
+            category: 'Valve Seat Grinding Tools',
+            image: '/images/products/psh-vgkp-with-heavy-stand.jpg',
+            selectedVariant: 'Standard Heavy-Duty Set (Dual Arbor)',
+            notes: 'Includes precision hex drive arbor, diamond wheel dresser, and heavy-duty case',
+            quantity: 1,
+            unitPrice: 42500,
+            discountPercent: 5,
+            gstRate: 18,
+            lineTotal: 47642.5
+          }
+        ],
+        validityDays: 30,
+        paymentTerms: '50% advance, balance against Proforma Invoice / dispatch',
+        deliveryTimeline: 'Ex-stock / Ready for dispatch within 2-3 business days',
+        generalNotes: 'Standard 1-year manufacturer guarantee on tooling precision and metallurgical integrity.',
+        bankDetails: {
+          bankName: 'HDFC Bank Ltd',
+          accountName: 'PRAZTECH ENGINEERING',
+          accountNumber: '50200084729103',
+          ifscCode: 'HDFC0000123',
+          branch: 'Asaf Ali Road, New Delhi'
+        },
+        status: 'Dispatched',
+        createdAt: '2026-11-24T10:14:00.000Z'
+      }
+    ];
+  });
+  const [pastQuoteSearch, setPastQuoteSearch] = useState<string>('');
+
+  // Product Showcase Image Generator States
+  const [showcaseSelectedProductId, setShowcaseSelectedProductId] = useState<string>('');
+  const [showcaseSearch, setShowcaseSearch] = useState<string>('');
+  const [showcaseDropdownOpen, setShowcaseDropdownOpen] = useState<boolean>(false);
+  const [showcaseIsFocused, setShowcaseIsFocused] = useState<boolean>(false);
+  const showcaseComboboxRef = useRef<HTMLDivElement>(null);
+  const [showcaseCategoryFilter, setShowcaseCategoryFilter] = useState<string>('all');
+  const showcaseAspectRatio: 'portrait' = 'portrait';
+  const [showcaseIncludeVariants, setShowcaseIncludeVariants] = useState<boolean>(true);
+  const [showcaseHeadline, setShowcaseHeadline] = useState<string>('');
+  const [showcaseProductTitle, setShowcaseProductTitle] = useState<string>('');
+  const [showcaseTagline, setShowcaseTagline] = useState<string>('');
+  const [showcaseIncludeFeatures, setShowcaseIncludeFeatures] = useState<boolean>(true);
+  const [showcaseIncludeSpecs, setShowcaseIncludeSpecs] = useState<boolean>(true);
+  const [showcaseIncludeApplications, setShowcaseIncludeApplications] = useState<boolean>(true);
+  const [showcaseCustomNotes, setShowcaseCustomNotes] = useState<string>('');
+  const [showcaseSelectedImage, setShowcaseSelectedImage] = useState<string>('');
+  const [showcasePreviewDataUrl, setShowcasePreviewDataUrl] = useState<string>('');
+  const [isGeneratingShowcase, setIsGeneratingShowcase] = useState<boolean>(false);
+  const [showcaseCopySuccess, setShowcaseCopySuccess] = useState<boolean>(false);
+  const [showcaseZoomFit, setShowcaseZoomFit] = useState<boolean>(true);
+  const [showcaseSelectedSubModel, setShowcaseSelectedSubModel] = useState<SubModel | null>(null);
 
   const computeItemLineTotal = (
     quantity: number,
@@ -580,9 +729,415 @@ export const UsersPage: React.FC = () => {
     };
   };
 
+  const saveQuotationToHistory = useCallback((customQuoteData?: QuotationDetails, status: 'Dispatched' | 'Downloaded' | 'Draft' = 'Draft') => {
+    const data = customQuoteData || getQuotationDataForExport();
+    const entry: PastCommercialQuote = {
+      id: `PQ-${data.quoteNumber || Date.now()}`,
+      quoteNumber: data.quoteNumber || 'PRZ-QT-PENDING',
+      quoteDate: data.quoteDate || new Date().toISOString().split('T')[0],
+      customerName: data.customer?.fullName || quoteForm.customerName || 'Prospective Buyer',
+      company: data.customer?.company || quoteForm.company || '',
+      email: data.customer?.email || quoteForm.email || '',
+      phone: data.customer?.phone || quoteForm.phone || '',
+      whatsapp: data.customer?.whatsapp || quoteForm.whatsapp || '',
+      address: data.customer?.address || quoteForm.address || '',
+      city: data.customer?.city || quoteForm.city || 'Delhi',
+      state: data.customer?.state || quoteForm.state || 'Delhi',
+      country: data.customer?.country || quoteForm.country || 'India',
+      gstin: data.customer?.gstin || quoteForm.gstin || '',
+      currency: data.currency || quoteForm.currency || 'INR',
+      currencySymbol: data.currencySymbol || quoteForm.currencySymbol || '₹',
+      subtotal: data.subtotal || 0,
+      discountTotal: data.discountTotal || 0,
+      taxableAmount: data.taxableAmount || 0,
+      taxTotal: data.taxTotal || 0,
+      freightCharges: data.freightCharges || 0,
+      grandTotal: data.grandTotal || 0,
+      itemsCount: data.items?.length || 0,
+      items: (data.items || []).map((it, idx) => ({
+        id: `quote-item-${idx}-${Date.now()}`,
+        isCustom: !!it.isCustom,
+        modelNo: it.modelNo,
+        name: it.name,
+        category: it.category || 'Precision Tooling',
+        image: it.image || '',
+        selectedVariant: it.selectedVariant || '',
+        notes: it.notes || '',
+        quantity: it.quantity || 1,
+        unitPrice: it.unitPrice || 0,
+        discountPercent: it.discountPercent || 0,
+        gstRate: it.gstRate || 18,
+        lineTotal: it.lineTotal || (it.quantity * it.unitPrice)
+      })),
+      validityDays: quoteForm.validityDays || 30,
+      paymentTerms: data.paymentTerms || quoteForm.paymentTerms || '',
+      deliveryTimeline: data.deliveryTimeline || quoteForm.deliveryTimeline || '',
+      generalNotes: data.generalNotes || quoteForm.generalNotes || '',
+      bankDetails: data.bankDetails || {
+        bankName: quoteForm.bankName,
+        accountName: quoteForm.accountName,
+        accountNumber: quoteForm.accountNumber,
+        ifscCode: quoteForm.ifscCode,
+        branch: quoteForm.branch
+      },
+      status,
+      createdAt: new Date().toISOString()
+    };
+
+    setPastQuotes(prev => {
+      const filtered = prev.filter(p => p.quoteNumber !== entry.quoteNumber);
+      const updated = [entry, ...filtered];
+      try {
+        localStorage.setItem(PAST_QUOTES_STORAGE_KEY, JSON.stringify(updated.slice(0, 50)));
+      } catch (err) {
+        console.error('Failed to save past quotes to local storage', err);
+      }
+      return updated;
+    });
+
+    return entry;
+  }, [quoteForm, quoteFinancials, quoteItems, catalogueList]);
+
+  const handleSaveDraftQuote = () => {
+    const quoteData = getQuotationDataForExport();
+    saveQuotationToHistory(quoteData, 'Draft');
+    setActionSuccessMsg(`Quotation "${quoteData.quoteNumber}" saved to Past Quotations archive as Draft!`);
+  };
+
   const handleDownloadQuotePDF = async () => {
     const quoteData = getQuotationDataForExport();
+    saveQuotationToHistory(quoteData, 'Downloaded');
     await generateClientSideQuotationPDF(quoteData);
+  };
+
+  const handleLoadPastQuoteIntoEditor = (pq: PastCommercialQuote) => {
+    setQuoteForm({
+      quoteNumber: pq.quoteNumber,
+      quoteDate: pq.quoteDate,
+      validityDays: pq.validityDays || 30,
+      currency: (pq.currency as 'INR' | 'USD' | 'EUR' | 'GBP') || 'INR',
+      currencySymbol: pq.currencySymbol || '₹',
+      selectedCustomerId: '',
+      customerName: pq.customerName,
+      company: pq.company,
+      email: pq.email,
+      phone: pq.phone,
+      whatsapp: pq.whatsapp || pq.phone,
+      gstin: pq.gstin || '',
+      address: pq.address || '',
+      city: pq.city || 'Delhi',
+      state: pq.state || 'Delhi',
+      country: pq.country || 'India',
+      paymentTerms: pq.paymentTerms || '',
+      deliveryTimeline: pq.deliveryTimeline || '',
+      freightCharges: pq.freightCharges || 0,
+      generalNotes: pq.generalNotes || '',
+      bankName: pq.bankDetails?.bankName || 'HDFC Bank Ltd',
+      accountName: pq.bankDetails?.accountName || 'PRAZTECH ENGINEERING',
+      accountNumber: pq.bankDetails?.accountNumber || '50200084729103',
+      ifscCode: pq.bankDetails?.ifscCode || 'HDFC0000123',
+      branch: pq.bankDetails?.branch || 'Asaf Ali Road, New Delhi'
+    });
+
+    if (pq.items && pq.items.length > 0) {
+      setQuoteItems(pq.items.map((it, idx) => ({
+        id: `quote-item-reloaded-${idx}-${Date.now()}`,
+        isCustom: !!it.isCustom,
+        modelNo: it.modelNo,
+        name: it.name,
+        category: it.category || 'Precision Tooling',
+        image: it.image || '',
+        selectedVariant: it.selectedVariant || '',
+        notes: it.notes || '',
+        quantity: it.quantity || 1,
+        unitPrice: it.unitPrice || 0,
+        discountPercent: it.discountPercent || 0,
+        gstRate: it.gstRate || 18,
+        lineTotal: it.lineTotal || (it.quantity * it.unitPrice)
+      })));
+    }
+    window.scrollTo({ top: 320, behavior: 'smooth' });
+    setActionSuccessMsg(`Quotation "${pq.quoteNumber}" loaded into the editor! You can now adjust, re-price, or re-send.`);
+  };
+
+  const handleDownloadPastQuotePDF = async (pq: PastCommercialQuote) => {
+    const qDetails: QuotationDetails = {
+      quoteNumber: pq.quoteNumber,
+      quoteDate: pq.quoteDate,
+      validUntil: `${pq.validityDays || 30} Days`,
+      currency: pq.currency,
+      currencySymbol: pq.currencySymbol,
+      customer: {
+        fullName: pq.customerName,
+        company: pq.company,
+        email: pq.email,
+        phone: pq.phone,
+        whatsapp: pq.whatsapp,
+        address: pq.address,
+        city: pq.city || 'Delhi',
+        state: pq.state || 'Delhi',
+        country: pq.country || 'India',
+        gstin: pq.gstin
+      },
+      items: pq.items || [],
+      subtotal: pq.subtotal,
+      discountTotal: pq.discountTotal,
+      taxableAmount: pq.taxableAmount,
+      taxTotal: pq.taxTotal,
+      freightCharges: pq.freightCharges,
+      grandTotal: pq.grandTotal,
+      paymentTerms: pq.paymentTerms,
+      deliveryTimeline: pq.deliveryTimeline,
+      generalNotes: pq.generalNotes,
+      bankDetails: pq.bankDetails?.bankName ? {
+        bankName: pq.bankDetails.bankName,
+        accountName: pq.bankDetails.accountName || 'PRAZTECH ENGINEERING',
+        accountNumber: pq.bankDetails.accountNumber || '50200084729103',
+        ifscCode: pq.bankDetails.ifscCode || 'HDFC0000123',
+        branch: pq.bankDetails.branch || 'New Delhi'
+      } : undefined,
+      authorizedSignatory: 'Commercial Sales Desk'
+    };
+    await generateClientSideQuotationPDF(qDetails);
+  };
+
+  const handleDeletePastQuote = (id: string, quoteNo: string) => {
+    if (confirm(`Are you sure you want to delete quotation "${quoteNo}" from the archive?`)) {
+      setPastQuotes(prev => {
+        const updated = prev.filter(p => p.id !== id && p.quoteNumber !== quoteNo);
+        try {
+          localStorage.setItem(PAST_QUOTES_STORAGE_KEY, JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+      setActionSuccessMsg(`Quotation "${quoteNo}" removed from history.`);
+    }
+  };
+
+  const filteredPastQuotes = useMemo(() => {
+    if (!pastQuoteSearch.trim()) return pastQuotes;
+    const term = pastQuoteSearch.toLowerCase();
+    return pastQuotes.filter(p =>
+      p.quoteNumber?.toLowerCase().includes(term) ||
+      p.customerName?.toLowerCase().includes(term) ||
+      p.company?.toLowerCase().includes(term) ||
+      p.email?.toLowerCase().includes(term) ||
+      p.phone?.toLowerCase().includes(term) ||
+      p.city?.toLowerCase().includes(term)
+    );
+  }, [pastQuotes, pastQuoteSearch]);
+
+  // Active showcase product
+  const activeShowcaseProduct = useMemo(() => {
+    if (!catalogueList || catalogueList.length === 0) return null;
+    if (showcaseSelectedProductId) {
+      const found = catalogueList.find(p => (p.id || p.slug || p.modelNo) === showcaseSelectedProductId);
+      if (found) return found;
+    }
+    return catalogueList[0];
+  }, [catalogueList, showcaseSelectedProductId]);
+
+  const activeVariantData = useMemo(() => {
+    return getToolVariantSectionData(activeShowcaseProduct as any);
+  }, [activeShowcaseProduct]);
+
+  const currentShowcaseSubModel = useMemo(() => {
+    if (!activeShowcaseProduct) return null;
+    return showcaseSelectedSubModel || getInitialSubModel(activeShowcaseProduct as any);
+  }, [activeShowcaseProduct, showcaseSelectedSubModel]);
+
+  // Sync defaults when active product changes
+  const handleSelectProductForShowcase = useCallback((prod: CatalogueProduct | any) => {
+    setShowcaseSelectedProductId(prod.id || prod.slug || prod.modelNo);
+    setShowcaseHeadline(prod.modelNo);
+    setShowcaseProductTitle(prod.name);
+    setShowcaseTagline(prod.description || 'Industrial grade valve reconditioning and precision seat cutting system.');
+    setShowcaseSelectedImage(prod.images?.[0] || '');
+    setShowcaseSelectedSubModel(getInitialSubModel(prod));
+    setShowcaseSearch('');
+    setShowcaseDropdownOpen(false);
+    setShowcaseIsFocused(false);
+  }, []);
+
+  // Filtered catalogue products for showcase combobox
+  const showcaseFilteredProducts = useMemo(() => {
+    if (!catalogueList) return [];
+    const q = (showcaseSearch || '').trim().toLowerCase();
+    if (!q) return catalogueList;
+    return catalogueList.filter(p => {
+      const m = (p.modelNo || '').toLowerCase();
+      const n = (p.name || '').toLowerCase();
+      const c = (p.category || '').toLowerCase();
+      const d = (p.description || '').toLowerCase();
+      return m.includes(q) || n.includes(q) || c.includes(q) || d.includes(q);
+    });
+  }, [catalogueList, showcaseSearch]);
+
+  // Close showcase combobox on outside click
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (showcaseComboboxRef.current && !showcaseComboboxRef.current.contains(event.target as Node)) {
+        setShowcaseDropdownOpen(false);
+        setShowcaseIsFocused(false);
+        setShowcaseSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, []);
+
+  // Auto-init active showcase product on first load
+  useEffect(() => {
+    if (!showcaseSelectedProductId && catalogueList && catalogueList.length > 0) {
+      handleSelectProductForShowcase(catalogueList[0] as any);
+    }
+  }, [catalogueList, showcaseSelectedProductId, handleSelectProductForShowcase]);
+
+  // Re-render showcase canvas whenever config changes
+  useEffect(() => {
+    if (!activeShowcaseProduct) return;
+    let isCancelled = false;
+
+    const renderShowcase = async () => {
+      setIsGeneratingShowcase(true);
+      try {
+        const config: ProductShowcaseConfig = {
+          product: activeShowcaseProduct as any,
+          headline: showcaseHeadline || activeShowcaseProduct.modelNo,
+          productTitle: showcaseProductTitle || activeShowcaseProduct.name,
+          tagline: showcaseTagline || activeShowcaseProduct.description,
+          categoryBadge: activeShowcaseProduct.category || 'PRECISION TOOLING',
+          selectedImageUrl: showcaseSelectedImage || activeShowcaseProduct.images?.[0],
+          selectedSubModel: null,
+          aspectRatio: showcaseAspectRatio,
+          includeFeatures: showcaseIncludeFeatures,
+          includeSpecs: showcaseIncludeSpecs,
+          includeVariants: showcaseIncludeVariants,
+          includeApplications: showcaseIncludeApplications,
+          customNotes: showcaseCustomNotes
+        };
+
+        const dataUrl = await generateProductShowcaseDataUrl(config, 'image/png');
+        if (!isCancelled) {
+          setShowcasePreviewDataUrl(dataUrl);
+        }
+      } catch (err) {
+        console.error('Error rendering product showcase image:', err);
+      } finally {
+        if (!isCancelled) {
+          setIsGeneratingShowcase(false);
+        }
+      }
+    };
+
+    const timer = setTimeout(renderShowcase, 180);
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    activeShowcaseProduct,
+    showcaseHeadline,
+    showcaseProductTitle,
+    showcaseTagline,
+    showcaseSelectedImage,
+    showcaseAspectRatio,
+    showcaseIncludeFeatures,
+    showcaseIncludeSpecs,
+    showcaseIncludeVariants,
+    showcaseIncludeApplications,
+    showcaseCustomNotes
+  ]);
+
+  const handleDownloadShowcasePNG = async () => {
+    if (!activeShowcaseProduct) return;
+    const config: ProductShowcaseConfig = {
+      product: activeShowcaseProduct as any,
+      headline: showcaseHeadline || activeShowcaseProduct.modelNo,
+      productTitle: showcaseProductTitle || activeShowcaseProduct.name,
+      tagline: showcaseTagline || activeShowcaseProduct.description,
+      categoryBadge: activeShowcaseProduct.category || 'PRECISION TOOLING',
+      selectedImageUrl: showcaseSelectedImage || activeShowcaseProduct.images?.[0],
+      selectedSubModel: null,
+      aspectRatio: showcaseAspectRatio,
+      includeFeatures: showcaseIncludeFeatures,
+      includeSpecs: showcaseIncludeSpecs,
+      includeVariants: showcaseIncludeVariants,
+      includeApplications: showcaseIncludeApplications,
+      customNotes: showcaseCustomNotes
+    };
+    const canvas = await generateProductShowcaseCanvas(config);
+    downloadShowcaseImage(canvas, `PRAZTECH_${activeShowcaseProduct.modelNo}_Showcase.png`);
+    setActionSuccessMsg(`Downloaded high-resolution PNG for ${activeShowcaseProduct.modelNo}`);
+  };
+
+  const handleDownloadShowcaseJPEG = async () => {
+    if (!activeShowcaseProduct) return;
+    const config: ProductShowcaseConfig = {
+      product: activeShowcaseProduct as any,
+      headline: showcaseHeadline || activeShowcaseProduct.modelNo,
+      productTitle: showcaseProductTitle || activeShowcaseProduct.name,
+      tagline: showcaseTagline || activeShowcaseProduct.description,
+      categoryBadge: activeShowcaseProduct.category || 'PRECISION TOOLING',
+      selectedImageUrl: showcaseSelectedImage || activeShowcaseProduct.images?.[0],
+      selectedSubModel: null,
+      aspectRatio: showcaseAspectRatio,
+      includeFeatures: showcaseIncludeFeatures,
+      includeSpecs: showcaseIncludeSpecs,
+      includeVariants: showcaseIncludeVariants,
+      includeApplications: showcaseIncludeApplications,
+      customNotes: showcaseCustomNotes
+    };
+    const canvas = await generateProductShowcaseCanvas(config);
+    const link = document.createElement('a');
+    link.download = `PRAZTECH_${activeShowcaseProduct.modelNo}_Showcase.jpg`;
+    link.href = canvas.toDataURL('image/jpeg', 0.95);
+    link.click();
+    setActionSuccessMsg(`Downloaded high-resolution JPEG for ${activeShowcaseProduct.modelNo}`);
+  };
+
+  const handleCopyShowcaseToClipboard = async () => {
+    if (!activeShowcaseProduct) return;
+    const config: ProductShowcaseConfig = {
+      product: activeShowcaseProduct as any,
+      headline: showcaseHeadline || activeShowcaseProduct.modelNo,
+      productTitle: showcaseProductTitle || activeShowcaseProduct.name,
+      tagline: showcaseTagline || activeShowcaseProduct.description,
+      categoryBadge: activeShowcaseProduct.category || 'PRECISION TOOLING',
+      selectedImageUrl: showcaseSelectedImage || activeShowcaseProduct.images?.[0],
+      selectedSubModel: null,
+      aspectRatio: showcaseAspectRatio,
+      includeFeatures: showcaseIncludeFeatures,
+      includeSpecs: showcaseIncludeSpecs,
+      includeVariants: showcaseIncludeVariants,
+      includeApplications: showcaseIncludeApplications,
+      customNotes: showcaseCustomNotes
+    };
+    const canvas = await generateProductShowcaseCanvas(config);
+    const success = await copyCanvasImageToClipboard(canvas);
+    if (success) {
+      setShowcaseCopySuccess(true);
+      setTimeout(() => setShowcaseCopySuccess(false), 2500);
+      setActionSuccessMsg('Product showcase image copied to clipboard! You can paste directly into WhatsApp, Slack, or email.');
+    } else {
+      alert('Direct image clipboard copy is not supported in this browser. Please use the Download button.');
+    }
+  };
+
+  const handleShareShowcaseWhatsApp = () => {
+    if (!activeShowcaseProduct) return;
+    const text = encodeURIComponent(
+      `*PRAZTECH® ENGINEERING - PRODUCT SHOWCASE*\n` +
+      `*Model:* ${activeShowcaseProduct.modelNo}\n` +
+      `*Tool:* ${activeShowcaseProduct.name}\n` +
+      `*Category:* ${activeShowcaseProduct.category}\n\n` +
+      `*Features:*\n${(activeShowcaseProduct.keyFeatures || []).slice(0, 3).map(f => `• ${f}`).join('\n')}\n\n` +
+      `Official Overview & Technical Specifications: https://www.praztechtools.com/catalogue/${activeShowcaseProduct.slug}\n\n` +
+      `Manufactured by PRAZTECH® Engineering, Delhi, India. Contact: +91 8744020102`
+    );
+    window.open(`https://wa.me/?text=${text}`, '_blank');
   };
 
   const handlePreviewQuoteModal = () => {
@@ -734,6 +1289,8 @@ export const UsersPage: React.FC = () => {
       });
       const json = await res.json();
       if (res.ok && json.success) {
+        const quoteData = getQuotationDataForExport();
+        saveQuotationToHistory(quoteData, 'Dispatched');
         await handleDownloadQuotePDF();
         await loadAllData();
 
@@ -1961,6 +2518,21 @@ export const UsersPage: React.FC = () => {
             <span>Catalogue Index</span>
             <span className="ml-1.5 px-2 py-0.5 rounded-full text-[11px] font-mono bg-[#efe7f7] text-[#5e3e8b]">
               {catalogueList.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => handleTabSwitch('product-showcase')}
+            className={`px-5 py-3.5 text-xs font-medium inline-flex items-center space-x-2 border-b-2 transition-colors cursor-pointer ${
+              activeTab === 'product-showcase'
+                ? 'border-[#5e3e8b] text-[#2e075d] bg-white font-semibold'
+                : 'border-transparent text-[#6e568b] hover:text-[#2e075d]'
+            }`}
+          >
+            <ImageIcon className="w-4 h-4 text-[#5e3e8b]" />
+            <span>Product Showcase Generator</span>
+            <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-[#efe7f7] text-[#5e3e8b] font-bold">
+              Image
             </span>
           </button>
 
@@ -4021,6 +4593,16 @@ export const UsersPage: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
+                    onClick={handleSaveDraftQuote}
+                    className="px-4 py-2.5 rounded-lg border border-[#dfd5e8] bg-white text-[#2e075d] hover:bg-[#faf8fc] text-xs font-medium flex items-center space-x-1.5 shadow-2xs transition-colors cursor-pointer"
+                    title="Save current quote to Past Quotations archive as Draft"
+                  >
+                    <Save className="w-4 h-4 text-[#5e3e8b]" />
+                    <span>Save Draft to Archive</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={handlePreviewQuoteModal}
                     className="px-4 py-2.5 rounded-lg border border-[#dfd5e8] bg-white text-[#2e075d] hover:bg-[#faf8fc] text-xs font-medium flex items-center space-x-1.5 shadow-2xs transition-colors cursor-pointer"
                   >
@@ -4058,6 +4640,625 @@ export const UsersPage: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* ── SECTION: PAST COMMERCIAL QUOTATION ENTRIES & ARCHIVE ── */}
+            <div className="border border-[#dfd5e8] rounded-xl bg-white overflow-hidden shadow-xs">
+              <div className="bg-[#faf8fc] border-b border-[#dfd5e8] px-6 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div className="flex items-center space-x-2.5">
+                  <ClipboardList className="w-5 h-5 text-[#5e3e8b]" />
+                  <div>
+                    <h4 className="font-heading font-bold text-sm text-[#2e075d]">
+                      Past Commercial Quotation Entries
+                    </h4>
+                    <p className="text-[11px] text-[#6e568b]">
+                      Historical archive of commercial quotations generated. Re-load into editor, preview, or re-download PDF anytime.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-[#9080a5] absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search quote #, customer, company..."
+                      value={pastQuoteSearch}
+                      onChange={e => setPastQuoteSearch(e.target.value)}
+                      className="pl-8 pr-3 py-1.5 rounded-lg border border-[#dfd5e8] text-xs bg-white focus:outline-none focus:border-[#5e3e8b] w-52 sm:w-64"
+                    />
+                  </div>
+                  <span className="text-[11px] font-mono px-2.5 py-1 rounded-md bg-[#efe7f7] text-[#5e3e8b] font-bold border border-[#dfd5e8]">
+                    {filteredPastQuotes.length} Quotes
+                  </span>
+                </div>
+              </div>
+
+              {filteredPastQuotes.length === 0 ? (
+                <div className="p-8 text-center space-y-2">
+                  <FileText className="w-8 h-8 text-[#9080a5] mx-auto opacity-50" />
+                  <p className="text-xs font-medium text-[#2e075d]">No past quotation entries found</p>
+                  <p className="text-[11px] text-[#6e568b]">
+                    {pastQuoteSearch ? 'Try a different search keyword.' : 'Generate or save your first quotation above to archive it here.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#f7f5fa] text-[#5e3e8b] uppercase text-[10px] tracking-wider border-b border-[#dfd5e8]">
+                      <tr>
+                        <th className="py-3 px-4 font-bold">Quote Ref</th>
+                        <th className="py-3 px-4 font-bold">Date / Validity</th>
+                        <th className="py-3 px-4 font-bold">Customer & Company</th>
+                        <th className="py-3 px-4 font-bold">Items Quoted</th>
+                        <th className="py-3 px-4 font-bold text-right">Grand Total</th>
+                        <th className="py-3 px-4 font-bold text-center">Status</th>
+                        <th className="py-3 px-4 font-bold text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#f0eaf7]">
+                      {filteredPastQuotes.map(pq => {
+                        const statusBadge =
+                          pq.status === 'Dispatched'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : pq.status === 'Downloaded'
+                            ? 'bg-[#efe7f7] text-[#5e3e8b] border-[#dfd5e8]'
+                            : 'bg-amber-50 text-amber-800 border-amber-200';
+
+                        return (
+                          <tr key={pq.id} className="hover:bg-[#faf8fc] transition-colors">
+                            <td className="py-3 px-4">
+                              <div className="font-mono font-bold text-[#5e3e8b]">{pq.quoteNumber}</div>
+                              <div className="text-[10px] text-[#9080a5]">{pq.currency} Quote</div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="text-[#2e075d] font-medium">{formatDateDDMMYY(pq.quoteDate)}</div>
+                              <div className="text-[10px] text-[#6e568b]">{pq.validityDays} Days Validity</div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="font-bold text-[#2e075d]">{pq.customerName}</div>
+                              <div className="text-[11px] text-[#6e568b]">{pq.company || 'Direct Workshop'}</div>
+                              <div className="text-[10px] text-[#9080a5]">{pq.phone || pq.email}</div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="font-medium text-[#2e075d]">
+                                {pq.itemsCount || pq.items?.length || 1} Tooling Item(s)
+                              </div>
+                              <div className="text-[10px] text-[#6e568b] truncate max-w-xs">
+                                {pq.items?.map(it => it.modelNo).filter(Boolean).slice(0, 2).join(', ')}
+                                {(pq.items?.length || 0) > 2 ? ' ...' : ''}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <div className="font-mono font-bold text-sm text-[#2e075d]">
+                                {pq.currencySymbol || '₹'}{Number(pq.grandTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </div>
+                              <div className="text-[10px] text-[#6e568b]">
+                                Tax: {pq.currencySymbol || '₹'}{Number(pq.taxTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${statusBadge}`}>
+                                {pq.status}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <div className="flex items-center justify-end space-x-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleLoadPastQuoteIntoEditor(pq)}
+                                  className="px-2.5 py-1 rounded bg-[#efe7f7] hover:bg-[#dfd5e8] text-[#5e3e8b] font-medium text-xs transition-colors cursor-pointer flex items-center space-x-1"
+                                  title="Load this quotation back into the editor to re-price, edit, or re-send"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                  <span>Edit / Re-Quote</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadPastQuotePDF(pq)}
+                                  className="p-1.5 rounded border border-[#dfd5e8] hover:bg-white text-[#5e3e8b] transition-colors cursor-pointer"
+                                  title="Download official PDF"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePastQuote(pq.id, pq.quoteNumber)}
+                                  className="p-1.5 rounded border border-[#dfd5e8] hover:bg-rose-50 text-rose-600 transition-colors cursor-pointer"
+                                  title="Delete from history"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── TAB 6: PRODUCT SHOWCASE & OVERVIEW IMAGE GENERATOR ── */}
+        {activeTab === 'product-showcase' && (
+          <div className="p-6 sm:p-8 space-y-8">
+            {/* Header & Subtitle */}
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-[#dfd5e8] pb-5">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="font-heading font-medium text-lg text-[#2e075d] flex items-center space-x-2">
+                    <ImageIcon className="w-5 h-5 text-[#5e3e8b]" />
+                    <span>Product Showcase & Overview Image Generator</span>
+                  </h3>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-[#efe7f7] text-[#5e3e8b] border border-[#dfd5e8]">
+                    High-Res Graphic Maker
+                  </span>
+                </div>
+                <p className="text-xs text-[#6e568b] mt-1">
+                  Select any catalog product to automatically populate a branded, high-resolution overview brochure/flyer image. Perfect for WhatsApp dispatches, customer email attachments, technical datasheets, and social media.
+                </p>
+              </div>
+
+              {/* Action Buttons Toolbar */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyShowcaseToClipboard}
+                  className="px-3.5 py-2 rounded-lg border border-[#dfd5e8] bg-white text-[#2e075d] hover:bg-[#faf8fc] text-xs font-medium flex items-center space-x-1.5 shadow-2xs transition-colors cursor-pointer"
+                  title="Copy image to clipboard to paste into WhatsApp, Slack, or email"
+                >
+                  {showcaseCopySuccess ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-[#5e3e8b]" />}
+                  <span>{showcaseCopySuccess ? 'Copied Image!' : 'Copy to Clipboard'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleShareShowcaseWhatsApp}
+                  className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium flex items-center space-x-1.5 shadow-2xs transition-colors cursor-pointer"
+                  title="Share product specs on WhatsApp"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>WhatsApp</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadShowcasePNG}
+                  className="px-4 py-2 rounded-lg bg-[#5e3e8b] hover:bg-[#6e568b] text-white text-xs font-medium flex items-center space-x-1.5 shadow-2xs transition-colors cursor-pointer"
+                  title="Download ultra high-resolution PNG image"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download HD PNG</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Main Two-Column Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Left Column: Configuration Controls (5 Cols) */}
+              <div className="lg:col-span-5 space-y-6">
+                {/* 1. Product Selection */}
+                <div className="border border-[#dfd5e8] rounded-xl p-5 bg-[#faf8fc] space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="font-heading font-bold text-xs uppercase text-[#5e3e8b] tracking-wider flex items-center space-x-1.5">
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span>1. Select Tooling Product</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => activeShowcaseProduct && handleSelectProductForShowcase(activeShowcaseProduct)}
+                      className="text-[11px] text-[#5e3e8b] hover:underline flex items-center space-x-1 cursor-pointer"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Reset to Defaults</span>
+                    </button>
+                  </div>
+
+                  {/* Single Unified Searchable Product Combobox */}
+                  <div ref={showcaseComboboxRef} className="relative">
+                    <div className="relative flex items-center">
+                      <div className="absolute left-3 pointer-events-none text-[#6e568b]">
+                        <Search className="w-4 h-4" />
+                      </div>
+
+                      <input
+                        type="text"
+                        value={
+                          showcaseIsFocused
+                            ? showcaseSearch
+                            : (activeShowcaseProduct ? `${activeShowcaseProduct.modelNo} — ${activeShowcaseProduct.name}` : '')
+                        }
+                        placeholder={
+                          activeShowcaseProduct
+                            ? `${activeShowcaseProduct.modelNo} — ${activeShowcaseProduct.name}`
+                            : 'Type to search or select a tooling product...'
+                        }
+                        onFocus={() => {
+                          setShowcaseIsFocused(true);
+                          setShowcaseDropdownOpen(true);
+                        }}
+                        onChange={e => {
+                          setShowcaseSearch(e.target.value);
+                          setShowcaseDropdownOpen(true);
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (showcaseFilteredProducts.length > 0) {
+                              handleSelectProductForShowcase(showcaseFilteredProducts[0]);
+                            }
+                          } else if (e.key === 'Escape') {
+                            setShowcaseDropdownOpen(false);
+                            setShowcaseIsFocused(false);
+                            setShowcaseSearch('');
+                          }
+                        }}
+                        className="w-full pl-9 pr-16 py-2.5 text-xs font-medium border border-[#dfd5e8] rounded-lg bg-white focus:outline-none focus:border-[#5e3e8b] focus:ring-1 focus:ring-[#5e3e8b] text-[#2e075d] placeholder:text-[#9080a5]"
+                      />
+
+                      <div className="absolute right-2 flex items-center space-x-1">
+                        {showcaseSearch && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowcaseSearch('');
+                              setShowcaseDropdownOpen(true);
+                            }}
+                            className="p-1 text-[#9080a5] hover:text-[#5e3e8b] rounded-full transition-colors cursor-pointer"
+                            title="Clear search query"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowcaseDropdownOpen(prev => !prev);
+                            setShowcaseIsFocused(true);
+                          }}
+                          className="p-1 text-[#9080a5] hover:text-[#5e3e8b] rounded transition-colors cursor-pointer"
+                          title="Browse all products"
+                        >
+                          <ChevronDown className={`w-4 h-4 transition-transform duration-150 ${showcaseDropdownOpen ? 'rotate-180 text-[#5e3e8b]' : ''}`} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Dropdown Results List */}
+                    {showcaseDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#dfd5e8] rounded-xl shadow-2xl max-h-72 overflow-y-auto z-50 divide-y divide-[#f5f1f9]">
+                        <div className="px-3 py-1.5 bg-[#fbf9fd] text-[10px] font-bold text-[#6e568b] uppercase tracking-wider flex items-center justify-between">
+                          <span>PRAZTECH® Catalog Tools ({showcaseFilteredProducts.length})</span>
+                          {showcaseSearch && (
+                            <span className="text-[#5e3e8b]">Filter: "{showcaseSearch}"</span>
+                          )}
+                        </div>
+
+                        {showcaseFilteredProducts.length > 0 ? (
+                          showcaseFilteredProducts.map(p => {
+                            const isSelected = activeShowcaseProduct && (activeShowcaseProduct.id || activeShowcaseProduct.slug || activeShowcaseProduct.modelNo) === (p.id || p.slug || p.modelNo);
+                            return (
+                              <button
+                                key={p.id || p.slug || p.modelNo}
+                                type="button"
+                                onClick={() => handleSelectProductForShowcase(p)}
+                                className={`w-full px-3 py-2.5 flex items-center space-x-3 text-left transition-colors cursor-pointer ${
+                                  isSelected ? 'bg-[#efe7f7]' : 'hover:bg-[#faf7fd]'
+                                }`}
+                              >
+                                <img
+                                  src={p.images?.[0] || '/images/placeholder.png'}
+                                  alt={p.modelNo}
+                                  className="w-9 h-9 rounded object-contain border border-[#dfd5e8] bg-[#f8f6fc] p-0.5 shrink-0"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center space-x-2">
+                                    <span className="font-bold text-xs text-[#2e075d]">{p.modelNo}</span>
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#f0eaf6] text-[#5e3e8b] font-medium truncate max-w-[140px]">
+                                      {p.category}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-[#5d5469] truncate mt-0.5">{p.name}</div>
+                                </div>
+                                {isSelected && (
+                                  <Check className="w-4 h-4 text-[#5e3e8b] shrink-0" />
+                                )}
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <div className="p-4 text-center">
+                            <p className="text-xs text-[#5d5469]">No tooling products match "{showcaseSearch}"</p>
+                            <button
+                              type="button"
+                              onClick={() => setShowcaseSearch('')}
+                              className="mt-1 text-xs text-[#5e3e8b] font-semibold hover:underline cursor-pointer"
+                            >
+                              Show all {catalogueList.length} products
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Active Product Quick Info */}
+                  {activeShowcaseProduct && (
+                    <div className="flex items-center space-x-3 p-3 bg-white rounded-lg border border-[#dfd5e8]">
+                      <img
+                        src={showcaseSelectedImage || activeShowcaseProduct.images?.[0] || '/images/placeholder.png'}
+                        alt={activeShowcaseProduct.modelNo}
+                        className="w-12 h-12 rounded object-contain border border-[#dfd5e8] bg-[#f8f6fc] p-1 shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-xs text-[#2e075d] truncate">{activeShowcaseProduct.modelNo}</div>
+                        <div className="text-[11px] text-[#6e568b] truncate">{activeShowcaseProduct.name}</div>
+                        <div className="text-[10px] text-[#9080a5]">{activeShowcaseProduct.category}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Text & Copy Customization */}
+                <div className="border border-[#dfd5e8] rounded-xl p-5 bg-white space-y-4">
+                  <span className="font-heading font-bold text-xs uppercase text-[#5e3e8b] tracking-wider block">
+                    2. Text & Copy Customization
+                  </span>
+
+                  <div className="space-y-3 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[11px] font-semibold text-[#6e568b] block mb-1">Model Number (Smaller)</label>
+                        <input
+                          type="text"
+                          value={showcaseHeadline}
+                          onChange={e => setShowcaseHeadline(e.target.value)}
+                          placeholder="e.g. VGS-1116"
+                          className="w-full px-3 py-2 border border-[#dfd5e8] rounded-lg bg-white focus:outline-none focus:border-[#5e3e8b] font-bold text-[#5e3e8b]"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="text-[11px] font-semibold text-[#6e568b] block mb-1">Product Title (Bigger Headline)</label>
+                        <input
+                          type="text"
+                          value={showcaseProductTitle}
+                          onChange={e => setShowcaseProductTitle(e.target.value)}
+                          placeholder="e.g. Valve Guide & Seat Reconditioning System"
+                          className="w-full px-3 py-2 border border-[#dfd5e8] rounded-lg bg-white focus:outline-none focus:border-[#5e3e8b] font-extrabold text-[#2e075d]"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-[#6e568b] block mb-1">Overview / Tagline</label>
+                      <textarea
+                        rows={3}
+                        value={showcaseTagline}
+                        onChange={e => setShowcaseTagline(e.target.value)}
+                        className="w-full px-3 py-2 border border-[#dfd5e8] rounded-lg bg-white focus:outline-none focus:border-[#5e3e8b] resize-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-[#6e568b] block mb-1">Custom Promotional Note / Special Offer</label>
+                      <input
+                        type="text"
+                        value={showcaseCustomNotes}
+                        onChange={e => setShowcaseCustomNotes(e.target.value)}
+                        placeholder="e.g. Includes complimentary diamond dresser & 1-year factory warranty"
+                        className="w-full px-3 py-2 border border-[#dfd5e8] rounded-lg bg-white focus:outline-none focus:border-[#5e3e8b]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Content Modules */}
+                <div className="border border-[#dfd5e8] rounded-xl p-5 bg-white space-y-3">
+                  <span className="font-heading font-bold text-xs uppercase text-[#5e3e8b] tracking-wider block">
+                    3. Content Modules
+                  </span>
+
+                  <div className="space-y-2 text-xs">
+                    <label className="flex items-center space-x-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={showcaseIncludeFeatures}
+                        onChange={e => setShowcaseIncludeFeatures(e.target.checked)}
+                        className="rounded border-[#dfd5e8] text-[#5e3e8b] focus:ring-[#5e3e8b]"
+                      />
+                      <span className="text-[#2e075d] font-medium">Include Key Engineering Advantages</span>
+                    </label>
+
+                    <label className="flex items-center space-x-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={showcaseIncludeSpecs}
+                        onChange={e => setShowcaseIncludeSpecs(e.target.checked)}
+                        className="rounded border-[#dfd5e8] text-[#5e3e8b] focus:ring-[#5e3e8b]"
+                      />
+                      <span className="text-[#2e075d] font-medium">Include Technical Specifications Matrix</span>
+                    </label>
+
+                    {activeVariantData.hasOptions && (
+                      <label className="flex items-center space-x-2.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={showcaseIncludeVariants}
+                          onChange={e => setShowcaseIncludeVariants(e.target.checked)}
+                          className="rounded border-[#dfd5e8] text-[#5e3e8b] focus:ring-[#5e3e8b]"
+                        />
+                        <span className="text-[#2e075d] font-medium">
+                          Include Specification & Variant Card ({activeVariantData.badgeCount} {activeVariantData.badgeCount === 1 ? 'Option' : 'Options'})
+                        </span>
+                      </label>
+                    )}
+
+                    <label className="flex items-center space-x-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={showcaseIncludeApplications}
+                        onChange={e => setShowcaseIncludeApplications(e.target.checked)}
+                        className="rounded border-[#dfd5e8] text-[#5e3e8b] focus:ring-[#5e3e8b]"
+                      />
+                      <span className="text-[#2e075d] font-medium">Include Target Applications & Sectors</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Quick Action Export Buttons */}
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleDownloadShowcasePNG}
+                    className="flex-1 px-4 py-3 rounded-lg bg-[#5e3e8b] hover:bg-[#6e568b] text-white text-xs font-semibold flex items-center justify-center space-x-2 shadow-md transition-colors cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download HD PNG</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadShowcaseJPEG}
+                    className="px-4 py-3 rounded-lg border border-[#dfd5e8] bg-white text-[#2e075d] hover:bg-[#faf8fc] text-xs font-medium flex items-center justify-center space-x-1.5 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Download className="w-4 h-4 text-[#5e3e8b]" />
+                    <span>Download JPEG</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Right Column: Live Interactive Preview (7 Cols) */}
+              <div className="lg:col-span-7 space-y-4 lg:sticky lg:top-6">
+                <div className="border border-[#dfd5e8] rounded-xl bg-white overflow-hidden shadow-md">
+                  {/* Preview Top Toolbar */}
+                  <div className="bg-[#faf8fc] border-b border-[#dfd5e8] px-5 py-3 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <span className="font-heading font-bold text-xs text-[#2e075d]">Live Canvas Output</span>
+                      <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-[#efe7f7] text-[#5e3e8b] font-bold">
+                        {showcaseAspectRatio === 'portrait' ? '1200 x 1600 px (Portrait Flyer)' : '1200 x 1200 px (Square Card)'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowcaseZoomFit(!showcaseZoomFit)}
+                        className="text-[11px] text-[#5e3e8b] hover:underline cursor-pointer"
+                      >
+                        {showcaseZoomFit ? 'Actual Size (100%)' : 'Fit Container'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Preview Canvas / Image Container */}
+                  <div className="p-4 sm:p-6 bg-[#f3edf7] flex items-center justify-center min-h-[480px] overflow-auto">
+                    {isGeneratingShowcase && !showcasePreviewDataUrl ? (
+                      <div className="flex flex-col items-center justify-center p-12 space-y-3">
+                        <RefreshCw className="w-8 h-8 text-[#5e3e8b] animate-spin" />
+                        <span className="text-xs text-[#6e568b]">Generating high-resolution showcase image...</span>
+                      </div>
+                    ) : showcasePreviewDataUrl ? (
+                      <div className={`relative transition-all duration-200 ${showcaseZoomFit ? 'w-full max-w-lg' : 'w-auto'}`}>
+                        <img
+                          src={showcasePreviewDataUrl}
+                          alt="Product Showcase Preview"
+                          className="w-full h-auto rounded-lg shadow-xl border border-[#dfd5e8] object-contain bg-white"
+                        />
+                        {isGeneratingShowcase && (
+                          <div className="absolute inset-0 bg-white/40 backdrop-blur-[1px] flex items-center justify-center rounded-lg">
+                            <div className="bg-[#2e075d] text-white px-3 py-1.5 rounded-full text-xs flex items-center space-x-2 shadow-lg">
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              <span>Updating Preview...</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center p-12 text-[#9080a5] text-xs">
+                        Select a product on the left to render the showcase preview.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Preview Footer Strip */}
+                  <div className="p-4 bg-white border-t border-[#dfd5e8] flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center space-x-2 text-[#6e568b] text-[11px]">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      <span>Ready for commercial WhatsApp sharing, brochures & flyers</span>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={handleCopyShowcaseToClipboard}
+                        className="px-3 py-1.5 rounded-lg border border-[#dfd5e8] text-[#5e3e8b] hover:bg-[#faf8fc] text-xs font-medium flex items-center space-x-1 cursor-pointer"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Image</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleDownloadShowcasePNG}
+                        className="px-3.5 py-1.5 rounded-lg bg-[#5e3e8b] hover:bg-[#6e568b] text-white text-xs font-medium flex items-center space-x-1 cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Download PNG</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Offscreen 1104px DOM node for pixel-perfect HTML card capture */}
+            {activeShowcaseProduct?.subModels && activeShowcaseProduct.subModels.length > 0 && (
+              <div
+                id="product-showcase-variant-capture-wrapper"
+                style={{
+                  position: 'fixed',
+                  left: '0px',
+                  top: '0px',
+                  width: '1104px',
+                  zIndex: -9999,
+                  opacity: 0.001,
+                  pointerEvents: 'none',
+                  overflow: 'hidden'
+                }}
+              >
+                <div
+                  id="product-showcase-variant-card-1104"
+                  data-product-slug={activeShowcaseProduct.slug}
+                  className="bg-white rounded-xl border border-[#dfd5e8] p-5 space-y-4 shadow-sm"
+                  style={{ width: '1104px', boxSizing: 'border-box' }}
+                >
+                  <div className="flex items-center justify-between pb-3 border-b border-[#dfd5e8]">
+                    <div className="flex items-center gap-2">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-[#5e3e8b]" />
+                      <span className="font-medium text-xs text-[#2e075d]">
+                        Specification and variant
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-industrial-500 font-mono">
+                      {activeShowcaseProduct.subModels.length} {activeShowcaseProduct.subModels.length === 1 ? 'option' : 'options'}
+                    </span>
+                  </div>
+                  <SubModelSelector
+                    productSlug={activeShowcaseProduct.slug}
+                    subModels={activeShowcaseProduct.subModels}
+                    selectedSubModel={null}
+                    onSelect={() => {}}
+                    variantOptionNames={(activeShowcaseProduct as any).variantOptionNames}
+                    unselected={true}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

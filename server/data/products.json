@@ -435,7 +435,12 @@
     ],
     "sizesDetail": [],
     "compatibility": "Designed for compatible 11/16\" threaded valve grinding stone holders and suitable engine valve seat grinding setups.",
-    "itemSpecifics": {},
+    "itemSpecifics": {
+      "Spindle Size": "5/16\" Threaded Heavy Spindle",
+      "Application": "Engine Valve Seat Extraction & Pulling",
+      "Body Material": "High-Tensile Hardened Alloy Tool Steel",
+      "Drive Mechanism": "Manual High-Torque T-Handle Threaded Mandrel"
+    },
     "notes": "Note - Supplied in a sturdy corrugated box with foam for safe packaging and storage.",
     "subModels": [],
     "corrections": [],
@@ -477,7 +482,13 @@
     ],
     "sizesDetail": [],
     "compatibility": "Designed for valve grinding setups using an 11/16\" threaded stone holder.",
-    "itemSpecifics": {},
+    "itemSpecifics": {
+      "Pilot Coverage": "21 Sizes: 4mm to 12mm Metric & 3/8\", 5/16\", 11/32\", 7/16\" Imperial",
+      "Stone Holder": "11/16\" Thread Stone Holder Included",
+      "Drive System": "Hex Drive Adapter Spindle with Terminal Pin",
+      "Packaging": "Workshop Steel Carrying Case",
+      "Concentricity": "Precision Ground within ±0.005mm Runout Tolerance"
+    },
     "notes": "",
     "subModels": [],
     "corrections": [
@@ -520,7 +531,13 @@
     ],
     "sizesDetail": [],
     "compatibility": "",
-    "itemSpecifics": {},
+    "itemSpecifics": {
+      "Pilot Coverage": "21 Sizes: 4mm to 12mm Metric & 3/8\", 5/16\", 11/32\", 7/16\" Imperial",
+      "Stone Holder": "11/16\" Thread Stone Holder Included",
+      "Drive System": "Hex Drive Adapter Spindle with Terminal Pin",
+      "Packaging": "Premium Wooden Box Packaging",
+      "Concentricity": "Precision Ground within ±0.005mm Runout Tolerance"
+    },
     "notes": "Also available in wooden box packing at an additional cost",
     "subModels": [],
     "corrections": [],
@@ -559,8 +576,15 @@
     ],
     "setIncludes": [],
     "sizesDetail": [],
-    "compatibility": "",
-    "itemSpecifics": {},
+    "compatibility": "Compatible with 11/16\" threaded stone holders & Sioux drive systems.",
+    "itemSpecifics": {
+      "Mounting Thread": "11/16\" Threaded Spindle (Sioux Standard)",
+      "Available Sizes": "14 Sizes: 1\" to 2½\" (25.4 mm – 63.5 mm)",
+      "Abrasive Formulations": "Pink (Alloy/HSS), White (Hardened Steel), Dark Grey (Cast Iron)",
+      "Bond Construction": "Vitrified Bonded High-Speed Industrial Grade",
+      "Grit Material": "Premium Aluminium Oxide & Silicon Carbide",
+      "Mounting Style": "Precision Centred Concentric Mount"
+    },
     "notes": "Custom sizes and specifications available on request.",
     "subModels": [
       {
@@ -946,7 +970,12 @@
     ],
     "sizesDetail": [],
     "compatibility": "Designed for compatible 9/16\" threaded valve grinding stone holders and suitable engine valve seat grinding setups.",
-    "itemSpecifics": {},
+    "itemSpecifics": {
+      "Spindle Size": "5/16\" Threaded Heavy Spindle",
+      "Application": "Engine Valve Seat Extraction & Pulling",
+      "Body Material": "Black Oxide Hardened Alloy Tool Steel",
+      "Drive Mechanism": "Manual High-Torque T-Handle Threaded Mandrel"
+    },
     "notes": "Note - Supplied in a sturdy corrugated box with foam for safe packaging and storage.",
     "subModels": [],
     "corrections": [],
@@ -988,7 +1017,13 @@
     ],
     "sizesDetail": [],
     "compatibility": "Designed for valve grinding setups using an 9/16\" threaded stone holder.",
-    "itemSpecifics": {},
+    "itemSpecifics": {
+      "Pilot Coverage": "21 Sizes: 4mm to 12mm Metric & 3/8\", 5/16\", 11/32\", 7/16\" Imperial",
+      "Stone Holder": "9/16\" Thread Stone Holder Included",
+      "Drive System": "Hex Drive Adapter Spindle with Terminal Pin",
+      "Packaging": "Workshop Steel Carrying Case",
+      "Concentricity": "Precision Ground within ±0.005mm Runout Tolerance"
+    },
     "notes": "",
     "subModels": [],
     "corrections": [
@@ -1031,7 +1066,13 @@
     ],
     "sizesDetail": [],
     "compatibility": "",
-    "itemSpecifics": {},
+    "itemSpecifics": {
+      "Pilot Coverage": "21 Sizes: 4mm to 12mm Metric & 3/8\", 5/16\", 11/32\", 7/16\" Imperial",
+      "Stone Holder": "9/16\" Thread Stone Holder Included",
+      "Drive System": "Hex Drive Adapter Spindle with Terminal Pin",
+      "Packaging": "Premium Wooden Box Packaging",
+      "Concentricity": "Precision Ground within ±0.005mm Runout Tolerance"
+    },
     "notes": "Also available in wooden box packing at an additional cost",
     "subModels": [],
     "corrections": [],
@@ -1070,8 +1111,15 @@
     ],
     "setIncludes": [],
     "sizesDetail": [],
-    "compatibility": "",
-    "itemSpecifics": {},
+    "compatibility": "Compatible with 9/16\" threaded stone holders & Black & Decker drive systems.",
+    "itemSpecifics": {
+      "Mounting Thread": "9/16\" Threaded Spindle (Black & Decker)",
+      "Available Sizes": "14 Sizes: 1\" to 2½\" (25.4 mm – 63.5 mm)",
+      "Abrasive Formulations": "Pink (Alloy/HSS), White (Hardened Steel), Dark Grey (Cast Iron)",
+      "Bond Construction": "Vitrified Bonded High-Speed Industrial Grade",
+      "Grit Material": "Premium Aluminium Oxide & Silicon Carbide",
+      "Mounting Style": "Precision Centred Concentric Mount"
+    },
     "notes": "Custom sizes and specifications available on request.",
     "subModels": [
       {
@@ -1379,8 +1427,15 @@
     ],
     "setIncludes": [],
     "sizesDetail": [],
-    "compatibility": "",
-    "itemSpecifics": {},
+    "compatibility": "Compatible with 7/16\" threaded stone holders.",
+    "itemSpecifics": {
+      "Mounting Thread": "7/16\" Threaded Spindle",
+      "Available Sizes": "17 Sizes: 18 mm to 34 mm",
+      "Abrasive Formulations": "Pink (Alloy/HSS), White (Hardened Steel), Dark Grey (Cast Iron)",
+      "Bond Construction": "Vitrified Bonded High-Speed Industrial Grade",
+      "Grit Material": "Premium Aluminium Oxide & Silicon Carbide",
+      "Mounting Style": "Precision Centred Concentric Mount"
+    },
     "notes": "Custom sizes and specifications available on request.",
     "subModels": [
       {
@@ -1466,8 +1521,15 @@
     ],
     "setIncludes": [],
     "sizesDetail": [],
-    "compatibility": "",
-    "itemSpecifics": {},
+    "compatibility": "Compatible with all standard valve seat grinding wheels & drive systems.",
+    "itemSpecifics": {
+      "Available Threads": "11/16\", 9/16\", and 7/16\" Interchangeable Spindles",
+      "Drive Adapter": "Star Drive Spindle Adapter",
+      "Bearing Type": "Dual High-Speed Precision Ball Bearings",
+      "Body Material": "Hardened Alloy Tool Steel",
+      "Concentricity": "Micron Repeatability with Zero Runout",
+      "Mounting Type": "Quick-Release Secure Locking Collar"
+    },
     "notes": "",
     "subModels": [
       {
@@ -2819,5 +2881,220 @@
       "/images/products/ahrep-2.jpg"
     ],
     "isActive": true
+  },
+  {
+    "id": "prod-41-test",
+    "indexNumber": 41,
+    "modelNo": "TEST",
+    "slug": "test",
+    "name": "MTESTulti-Variant DisplayMulti-Variant DisplayMulti-Variant DisplayMulti-Variant DisplayMulti-Variant Display",
+    "category": "Valve Seat Grinding Tools",
+    "categorySlug": "valve-seat-grinding-tools",
+    "cataloguePage": 42,
+    "tag": "standard",
+    "description": "TEST TEST TEST TEST TEST",
+    "keyFeatures": [
+      "Precision ground to DIN industrial standard tolerances",
+      "High wear resistance formulation"
+    ],
+    "applications": [
+      "Internal combustion engine cylinder head rebuilding"
+    ],
+    "setIncludes": [
+      "Primary tool unit and heavy-duty storage case"
+    ],
+    "sizesDetail": [],
+    "compatibility": "",
+    "variantOptionNames": [
+      "Size",
+      "Material"
+    ],
+    "subModels": [
+      {
+        "modelNo": "TEST-1",
+        "sizeMm": "18",
+        "size": "18",
+        "color": "",
+        "weight": "",
+        "stoneColor": "",
+        "specification": "DIAMOND",
+        "notes": "Factory standard stock",
+        "options": {
+          "Size": "18",
+          "Material": "DIAMOND"
+        },
+        "label": "18 • DIAMOND"
+      },
+      {
+        "modelNo": "TEST-2",
+        "sizeMm": "18",
+        "size": "18",
+        "color": "",
+        "weight": "",
+        "stoneColor": "",
+        "specification": "RUBY",
+        "notes": "Factory standard stock",
+        "options": {
+          "Size": "18",
+          "Material": "RUBY"
+        },
+        "label": "18 • RUBY"
+      },
+      {
+        "modelNo": "TEST-3",
+        "sizeMm": "18",
+        "size": "18",
+        "color": "",
+        "weight": "",
+        "stoneColor": "",
+        "specification": "QUARTZ",
+        "notes": "Factory standard stock",
+        "options": {
+          "Size": "18",
+          "Material": "QUARTZ"
+        },
+        "label": "18 • QUARTZ"
+      },
+      {
+        "modelNo": "TEST-4",
+        "sizeMm": "20",
+        "size": "20",
+        "color": "",
+        "weight": "",
+        "stoneColor": "",
+        "specification": "DIAMOND",
+        "notes": "Factory standard stock",
+        "options": {
+          "Size": "20",
+          "Material": "DIAMOND"
+        },
+        "label": "20 • DIAMOND"
+      },
+      {
+        "modelNo": "TEST-5",
+        "sizeMm": "20",
+        "size": "20",
+        "color": "",
+        "weight": "",
+        "stoneColor": "",
+        "specification": "RUBY",
+        "notes": "Factory standard stock",
+        "options": {
+          "Size": "20",
+          "Material": "RUBY"
+        },
+        "label": "20 • RUBY"
+      },
+      {
+        "modelNo": "TEST-6",
+        "sizeMm": "20",
+        "size": "20",
+        "color": "",
+        "weight": "",
+        "stoneColor": "",
+        "specification": "QUARTZ",
+        "notes": "Factory standard stock",
+        "options": {
+          "Size": "20",
+          "Material": "QUARTZ"
+        },
+        "label": "20 • QUARTZ"
+      },
+      {
+        "modelNo": "TEST-7",
+        "sizeMm": "25",
+        "size": "25",
+        "color": "",
+        "weight": "",
+        "stoneColor": "",
+        "specification": "DIAMOND",
+        "notes": "Factory standard stock",
+        "options": {
+          "Size": "25",
+          "Material": "DIAMOND"
+        },
+        "label": "25 • DIAMOND"
+      },
+      {
+        "modelNo": "TEST-8",
+        "sizeMm": "25",
+        "size": "25",
+        "color": "",
+        "weight": "",
+        "stoneColor": "",
+        "specification": "RUBY",
+        "notes": "Factory standard stock",
+        "options": {
+          "Size": "25",
+          "Material": "RUBY"
+        },
+        "label": "25 • RUBY"
+      },
+      {
+        "modelNo": "TEST-9",
+        "sizeMm": "25",
+        "size": "25",
+        "color": "",
+        "weight": "",
+        "stoneColor": "",
+        "specification": "QUARTZ",
+        "notes": "Factory standard stock",
+        "options": {
+          "Size": "25",
+          "Material": "QUARTZ"
+        },
+        "label": "25 • QUARTZ"
+      },
+      {
+        "modelNo": "TEST-10",
+        "sizeMm": "30",
+        "size": "30",
+        "color": "",
+        "weight": "",
+        "stoneColor": "",
+        "specification": "DIAMOND",
+        "notes": "Factory standard stock",
+        "options": {
+          "Size": "30",
+          "Material": "DIAMOND"
+        },
+        "label": "30 • DIAMOND"
+      },
+      {
+        "modelNo": "TEST-11",
+        "sizeMm": "30",
+        "size": "30",
+        "color": "",
+        "weight": "",
+        "stoneColor": "",
+        "specification": "RUBY",
+        "notes": "Factory standard stock",
+        "options": {
+          "Size": "30",
+          "Material": "RUBY"
+        },
+        "label": "30 • RUBY"
+      },
+      {
+        "modelNo": "TEST-12",
+        "sizeMm": "30",
+        "size": "30",
+        "color": "",
+        "weight": "",
+        "stoneColor": "",
+        "specification": "QUARTZ",
+        "notes": "Factory standard stock",
+        "options": {
+          "Size": "30",
+          "Material": "QUARTZ"
+        },
+        "label": "30 • QUARTZ"
+      }
+    ],
+    "images": [
+      "/images/products/218202611201349320002-a3419034fb6add72.png"
+    ],
+    "isActive": true,
+    "createdAt": "2026-11-24T14:59:23.621Z"
   }
 ]
