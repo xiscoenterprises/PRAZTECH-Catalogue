@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Globe, ChevronDown, Check } from 'lucide-react';
+import { Globe, ChevronDown, Check, Share2, Copy } from 'lucide-react';
 
 export interface Language {
   code: string;
@@ -21,6 +21,139 @@ export const LANGUAGES: Language[] = [
   { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी', flag: '🇮🇳' },
   { code: 'zh-CN', name: 'Chinese', nativeName: '简体中文', flag: '🇨🇳' }
 ];
+
+/**
+ * Normalizes input language names, codes, and aliases (case-insensitive) to canonical codes
+ */
+export const resolveLanguageCode = (input?: string | null): string | null => {
+  if (!input) return null;
+  const cleaned = input.trim().toLowerCase();
+  if (!cleaned) return null;
+
+  // Direct code match (e.g. 'es', 'de', 'ar', 'zh-cn')
+  const direct = LANGUAGES.find(l => l.code.toLowerCase() === cleaned);
+  if (direct) return direct.code;
+
+  // Exact name or nativeName match (e.g. 'spanish' -> 'es', 'arabic' -> 'ar')
+  const byName = LANGUAGES.find(
+    l => l.name.toLowerCase() === cleaned || l.nativeName.toLowerCase() === cleaned
+  );
+  if (byName) return byName.code;
+
+  // Common language name aliases
+  const aliasMap: Record<string, string> = {
+    sp: 'es',
+    esp: 'es',
+    espanol: 'es',
+    español: 'es',
+    spanish: 'es',
+    ger: 'de',
+    deutsch: 'de',
+    german: 'de',
+    ara: 'ar',
+    arabic: 'ar',
+    fre: 'fr',
+    fra: 'fr',
+    french: 'fr',
+    francais: 'fr',
+    français: 'fr',
+    rus: 'ru',
+    russian: 'ru',
+    por: 'pt',
+    portuguese: 'pt',
+    português: 'pt',
+    ita: 'it',
+    italian: 'it',
+    italiano: 'it',
+    tur: 'tr',
+    turkish: 'tr',
+    türkçe: 'tr',
+    hin: 'hi',
+    hindi: 'hi',
+    chi: 'zh-CN',
+    zho: 'zh-CN',
+    chinese: 'zh-CN',
+    mandarin: 'zh-CN',
+    zh: 'zh-CN',
+    'zh-cn': 'zh-CN',
+    eng: 'en',
+    english: 'en'
+  };
+
+  if (aliasMap[cleaned]) {
+    return aliasMap[cleaned];
+  }
+
+  return null;
+};
+
+/**
+ * Extracts language code from current URL query parameters (?lang=..., ?hl=..., ?locale=...) or hash
+ */
+export const getLanguageFromUrl = (): string | null => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const paramVal = params.get('lang') || params.get('hl') || params.get('locale');
+    if (paramVal) {
+      const resolved = resolveLanguageCode(paramVal);
+      if (resolved) return resolved;
+    }
+  } catch {}
+
+  try {
+    const hash = window.location.hash;
+    if (hash && hash.includes('googtrans')) {
+      const match = hash.match(/googtrans\([^|/]+\|([^)]+)\)/);
+      if (match && match[1]) {
+        const resolved = resolveLanguageCode(match[1]);
+        if (resolved) return resolved;
+      }
+    }
+  } catch {}
+
+  return null;
+};
+
+/**
+ * Updates the current URL with ?lang=<code> without a full page reload so the browser address bar is immediately shareable
+ */
+export const updateUrlLanguage = (code: string) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const url = new URL(window.location.href);
+    if (code === 'en') {
+      url.searchParams.delete('lang');
+      url.searchParams.delete('hl');
+      url.searchParams.delete('locale');
+    } else {
+      url.searchParams.set('lang', code);
+    }
+    window.history.replaceState({}, '', url.toString());
+  } catch {}
+};
+
+/**
+ * Builds a shareable URL containing the active language query parameter
+ */
+export const buildTranslatedUrl = (code?: string): string => {
+  if (typeof window === 'undefined') return '';
+  const targetCode = code || localStorage.getItem('praztech_selected_lang') || 'en';
+  try {
+    const url = new URL(window.location.href);
+    if (targetCode === 'en') {
+      url.searchParams.delete('lang');
+      url.searchParams.delete('hl');
+      url.searchParams.delete('locale');
+    } else {
+      url.searchParams.set('lang', targetCode);
+    }
+    return url.toString();
+  } catch {
+    return window.location.origin + window.location.pathname + (targetCode !== 'en' ? `?lang=${targetCode}` : '');
+  }
+};
 
 /**
  * Returns all possible domain variations for cookie scoping (host, parent domain, with and without leading dot)
@@ -83,16 +216,33 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [currentLang, setCurrentLang] = useState('en');
+  const [copiedLink, setCopiedLink] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Read current active language from cookie or localStorage
+  // Read current active language: URL params take priority, followed by cookie / localStorage
   const detectLanguage = (): string => {
     try {
+      // 1. URL Parameter Priority (links sent to international buyers)
+      const urlLang = getLanguageFromUrl();
+      if (urlLang) {
+        if (urlLang === 'en') {
+          clearGoogTransCookie();
+          try { localStorage.setItem('praztech_selected_lang', 'en'); } catch {}
+          return 'en';
+        }
+        setGoogTransCookie(urlLang);
+        try { localStorage.setItem('praztech_selected_lang', urlLang); } catch {}
+        return urlLang;
+      }
+
+      // 2. Local storage preference
       const saved = localStorage.getItem('praztech_selected_lang');
       if (saved === 'en') {
         clearGoogTransCookie();
         return 'en';
       }
+
+      // 3. Existing Google Translate cookie
       const match = document.cookie.match(/(?:^|;\s*)googtrans=([^;]*)/);
       if (match && match[1]) {
         const parts = decodeURIComponent(match[1]).split('/');
@@ -101,6 +251,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
           return code;
         }
       }
+
       if (saved && LANGUAGES.some(l => l.code === saved)) {
         return saved;
       }
@@ -114,6 +265,9 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
     const active = detectLanguage();
     if (active === 'en') {
       clearGoogTransCookie();
+    } else {
+      setGoogTransCookie(active);
+      updateUrlLanguage(active);
     }
     setCurrentLang(active);
 
@@ -149,7 +303,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
       document.body.appendChild(script);
     }
 
-    // Suppress Google Translate banner and body offset on DOM injection (without polling)
+    // Suppress Google Translate banner and body offset on DOM injection (without continuous polling)
     const suppressGoogleBanner = () => {
       if (document.body.style.top && document.body.style.top !== '0px') {
         document.body.style.setProperty('top', '0px', 'important');
@@ -192,6 +346,15 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
         if (shouldSuppress) {
           suppressGoogleBanner();
         }
+
+        // If active language is non-English, ensure Google Translate dropdown selects it
+        if (active !== 'en') {
+          const select = document.querySelector('.goog-te-combo') as HTMLSelectElement | null;
+          if (select && select.value !== active) {
+            select.value = active;
+            select.dispatchEvent(new Event('change'));
+          }
+        }
       } finally {
         isHandlingMutation = false;
       }
@@ -210,16 +373,31 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
       }
     };
 
+    // Sync on browser back/forward history events
+    const handlePopState = () => {
+      const poppedLang = detectLanguage();
+      setCurrentLang(poppedLang);
+      if (poppedLang === 'ar') {
+        document.documentElement.setAttribute('dir', 'rtl');
+      } else {
+        document.documentElement.removeAttribute('dir');
+      }
+    };
+
     document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('popstate', handlePopState);
+
     return () => {
       observer.disconnect();
       document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('popstate', handlePopState);
     };
   }, []);
 
   const handleSelectLanguage = (code: string) => {
     setCurrentLang(code);
-    localStorage.setItem('praztech_selected_lang', code);
+    try { localStorage.setItem('praztech_selected_lang', code); } catch {}
+    updateUrlLanguage(code);
 
     if (code === 'en') {
       // 1. Thoroughly wipe googtrans across all domain variations
@@ -268,11 +446,24 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
     if (onLanguageChange) onLanguageChange();
   };
 
+  const handleCopyShareLink = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const shareUrl = buildTranslatedUrl(currentLang);
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2200);
+    } catch {
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2200);
+    }
+  };
+
   const currentObj = LANGUAGES.find(l => l.code === currentLang) || LANGUAGES[0];
 
   if (variant === 'mobile') {
     return (
-      <div className="pt-2 border-t border-[#381c59]/70">
+      <div className="pt-2 border-t border-[#381c59]/70 space-y-2">
         <div className="flex items-center justify-between px-3 py-2 text-xs text-[#dcd5e4] font-medium">
           <span className="flex items-center space-x-2">
             <Globe className="w-4 h-4 text-[#b5a8c8]" />
@@ -282,7 +473,8 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
             {currentObj.flag} {currentObj.nativeName}
           </span>
         </div>
-        <div className="grid grid-cols-2 gap-1.5 px-2 mt-1 max-h-56 overflow-y-auto">
+
+        <div className="grid grid-cols-2 gap-1.5 px-2 max-h-52 overflow-y-auto">
           {LANGUAGES.map(lang => {
             const isSelected = lang.code === currentLang;
             return (
@@ -292,7 +484,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
                 onClick={() => handleSelectLanguage(lang.code)}
                 className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors cursor-pointer text-left ${
                   isSelected
-                    ? 'bg-[#5e3e8b] text-white font-bold'
+                    ? 'bg-[#5e3e8b] text-white font-bold shadow-xs'
                     : 'bg-[#2e075d] hover:bg-[#381c59] text-[#dcd5e4]'
                 }`}
               >
@@ -300,10 +492,29 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
                   <span className="text-sm">{lang.flag}</span>
                   <span className="truncate">{lang.nativeName}</span>
                 </span>
-                {isSelected && <Check className="w-3.5 h-3.5 shrink-0 ml-1" />}
+                {isSelected && <Check className="w-3.5 h-3.5 shrink-0 ml-1 text-emerald-400" />}
               </button>
             );
           })}
+        </div>
+
+        {/* Mobile One-Click Copy Shareable Link */}
+        <div className="px-2 pt-1 pb-1">
+          <button
+            type="button"
+            onClick={handleCopyShareLink}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium bg-[#381c59] hover:bg-[#5e3e8b] text-white transition-colors cursor-pointer border border-[#5e3e8b]/50 shadow-sm"
+          >
+            <span className="flex items-center space-x-2">
+              <Share2 className="w-3.5 h-3.5 text-[#dcd5e4]" />
+              <span>{copiedLink ? 'Link Copied to Clipboard!' : `Copy Link in ${currentObj.nativeName}`}</span>
+            </span>
+            {copiedLink ? (
+              <Check className="w-4 h-4 text-emerald-400" />
+            ) : (
+              <Copy className="w-3.5 h-3.5 text-[#dcd5e4]" />
+            )}
+          </button>
         </div>
       </div>
     );
@@ -334,10 +545,10 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1.5 w-60 bg-[#24064a] border border-[#5e3e8b]/60 rounded-xl shadow-2xl py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
-          <div className="px-3 py-1.5 border-b border-[#381c59] flex items-center justify-between text-[11px] text-[#b5a8c8] font-semibold uppercase tracking-wider">
+        <div className="absolute right-0 top-full mt-1.5 w-64 bg-[#24064a] border border-[#5e3e8b]/60 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-100 flex flex-col">
+          <div className="px-3.5 py-2 border-b border-[#381c59] flex items-center justify-between text-[11px] text-[#b5a8c8] font-semibold uppercase tracking-wider bg-[#1f0540]">
             <span>Translate Website</span>
-            <span className="font-mono text-[10px] text-white/60">Auto</span>
+            <span className="font-mono text-[10px] text-white/60">{currentObj.code.toUpperCase()}</span>
           </div>
 
           <div className="max-h-72 overflow-y-auto py-1 scrollbar-thin">
@@ -348,7 +559,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
                   key={lang.code}
                   type="button"
                   onClick={() => handleSelectLanguage(lang.code)}
-                  className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors cursor-pointer text-left ${
+                  className={`w-full flex items-center justify-between px-3.5 py-2 text-xs transition-colors cursor-pointer text-left ${
                     isSelected
                       ? 'bg-[#381c59] text-white font-bold'
                       : 'text-[#dcd5e4] hover:bg-[#2e075d] hover:text-white'
@@ -365,6 +576,28 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
                 </button>
               );
             })}
+          </div>
+
+          {/* Desktop One-Click Copy Shareable Link Strip */}
+          <div className="p-2 border-t border-[#381c59] bg-[#1a0435]">
+            <button
+              type="button"
+              onClick={handleCopyShareLink}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#dcd5e4] hover:text-white hover:bg-[#381c59] transition-colors cursor-pointer"
+              title="Copy link to this page in the active language"
+            >
+              <span className="flex items-center space-x-1.5 truncate">
+                <Share2 className="w-3.5 h-3.5 text-[#b5a8c8] shrink-0" />
+                <span className="truncate">
+                  {copiedLink ? 'Link Copied to Clipboard!' : `Copy Link in ${currentObj.nativeName}`}
+                </span>
+              </span>
+              {copiedLink ? (
+                <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 ml-1.5" />
+              ) : (
+                <Copy className="w-3 h-3 text-[#b5a8c8] shrink-0 ml-1.5" />
+              )}
+            </button>
           </div>
         </div>
       )}

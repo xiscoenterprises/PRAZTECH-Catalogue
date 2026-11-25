@@ -43,6 +43,7 @@ export const ProductDetailPage: React.FC = () => {
   const [itemNotes, setItemNotes] = useState('');
   const [selectedSubModel, setSelectedSubModel] = useState<SubModel | null>(null);
   const [addedSuccess, setAddedSuccess] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const [zoomModalOpen, setZoomModalOpen] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [detailTab, setDetailTab] = useState<DetailTab>('features');
@@ -272,6 +273,37 @@ export const ProductDetailPage: React.FC = () => {
   const handleQuickAddQty = (delta: number) => {
     setQuantity(prev => Math.max(1, prev + delta));
     setAddedSuccess(false);
+  };
+
+  const handleShareProduct = async () => {
+    try {
+      const activeLang = localStorage.getItem('praztech_selected_lang') || 'en';
+      const url = new URL(window.location.href);
+      if (activeLang && activeLang !== 'en') {
+        url.searchParams.set('lang', activeLang);
+      }
+      const shareUrl = url.toString();
+      const shareTitle = `${product?.modelNo || ''} - ${product?.name || ''} | PRAZTECH®`;
+      const shareText = `Explore ${product?.modelNo || ''}: ${product?.name || ''} from PRAZTECH® Precision Engineering Tools.`;
+
+      if (navigator.share && /mobile|android|iphone|ipad/i.test(navigator.userAgent)) {
+        try {
+          await navigator.share({
+            title: shareTitle,
+            text: shareText,
+            url: shareUrl
+          });
+          return;
+        } catch {}
+      }
+
+      await navigator.clipboard.writeText(shareUrl);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    } catch {
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    }
   };
 
   return (
@@ -624,6 +656,25 @@ export const ProductDetailPage: React.FC = () => {
               >
                 <SlidersHorizontal className="w-3.5 h-3.5" />
                 <span>{inCompare ? 'In comparison' : 'Compare'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleShareProduct}
+                className="py-3 px-3.5 rounded-lg text-xs font-medium border border-[#c5b6d5] bg-white text-[#5e3e8b] hover:bg-[#ede5f7] transition-colors flex items-center justify-center space-x-1.5 shrink-0 cursor-pointer"
+                title="Share link with active translation"
+              >
+                {shareCopied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-emerald-700 font-medium">Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Share</span>
+                  </>
+                )}
               </button>
             </div>
 
