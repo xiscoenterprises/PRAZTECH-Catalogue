@@ -63,8 +63,11 @@ import {
   downloadShowcaseImage,
   copyCanvasImageToClipboard,
   getToolVariantSectionData,
-  getInitialSubModel
+  getInitialSubModel,
+  getShowcaseText,
+  getProductTranslatedCopy
 } from '../utils/quotationImageGenerator';
+import { LANGUAGES } from '../components/LanguageSelector';
 import { SubModelSelector } from '../components/SubModelSelector';
 import { SubModel } from '../types';
 import initialCatalogueData from '../data/products.json';
@@ -488,6 +491,7 @@ export const UsersPage: React.FC = () => {
 
   // Product Showcase Image Generator States
   const [showcaseSelectedProductId, setShowcaseSelectedProductId] = useState<string>('');
+  const [showcaseLanguage, setShowcaseLanguage] = useState<string>('en');
   const [showcaseSearch, setShowcaseSearch] = useState<string>('');
   const [showcaseDropdownOpen, setShowcaseDropdownOpen] = useState<boolean>(false);
   const [showcaseIsFocused, setShowcaseIsFocused] = useState<boolean>(false);
@@ -950,14 +954,24 @@ export const UsersPage: React.FC = () => {
   const handleSelectProductForShowcase = useCallback((prod: CatalogueProduct | any) => {
     setShowcaseSelectedProductId(prod.id || prod.slug || prod.modelNo);
     setShowcaseHeadline(prod.modelNo);
-    setShowcaseProductTitle(prod.name);
-    setShowcaseTagline(prod.description || 'Industrial grade valve reconditioning and precision seat cutting system.');
+    const copy = getProductTranslatedCopy(prod, showcaseLanguage);
+    setShowcaseProductTitle(copy.title);
+    setShowcaseTagline(copy.tagline);
     setShowcaseSelectedImage(prod.images?.[0] || '');
     setShowcaseSelectedSubModel(getInitialSubModel(prod));
     setShowcaseSearch('');
     setShowcaseDropdownOpen(false);
     setShowcaseIsFocused(false);
-  }, []);
+  }, [showcaseLanguage]);
+
+  const handleShowcaseLanguageChange = (langCode: string) => {
+    setShowcaseLanguage(langCode);
+    if (activeShowcaseProduct) {
+      const copy = getProductTranslatedCopy(activeShowcaseProduct, langCode);
+      setShowcaseProductTitle(copy.title);
+      setShowcaseTagline(copy.tagline);
+    }
+  };
 
   // Filtered catalogue products for showcase combobox
   const showcaseFilteredProducts = useMemo(() => {
@@ -1005,6 +1019,7 @@ export const UsersPage: React.FC = () => {
       try {
         const config: ProductShowcaseConfig = {
           product: activeShowcaseProduct as any,
+          language: showcaseLanguage,
           headline: showcaseHeadline || activeShowcaseProduct.modelNo,
           productTitle: showcaseProductTitle || activeShowcaseProduct.name,
           tagline: showcaseTagline || activeShowcaseProduct.description,
@@ -1038,6 +1053,7 @@ export const UsersPage: React.FC = () => {
       clearTimeout(timer);
     };
   }, [
+    showcaseLanguage,
     activeShowcaseProduct,
     showcaseHeadline,
     showcaseProductTitle,
@@ -1055,6 +1071,7 @@ export const UsersPage: React.FC = () => {
     if (!activeShowcaseProduct) return;
     const config: ProductShowcaseConfig = {
       product: activeShowcaseProduct as any,
+      language: showcaseLanguage,
       headline: showcaseHeadline || activeShowcaseProduct.modelNo,
       productTitle: showcaseProductTitle || activeShowcaseProduct.name,
       tagline: showcaseTagline || activeShowcaseProduct.description,
@@ -1069,7 +1086,7 @@ export const UsersPage: React.FC = () => {
       customNotes: showcaseCustomNotes
     };
     const canvas = await generateProductShowcaseCanvas(config);
-    downloadShowcaseImage(canvas, `PRAZTECH_${activeShowcaseProduct.modelNo}_Showcase.png`);
+    downloadShowcaseImage(canvas, `PRAZTECH_${activeShowcaseProduct.modelNo}_${showcaseLanguage.toUpperCase()}_Showcase.png`);
     setActionSuccessMsg(`Downloaded high-resolution PNG for ${activeShowcaseProduct.modelNo}`);
   };
 
@@ -1077,6 +1094,7 @@ export const UsersPage: React.FC = () => {
     if (!activeShowcaseProduct) return;
     const config: ProductShowcaseConfig = {
       product: activeShowcaseProduct as any,
+      language: showcaseLanguage,
       headline: showcaseHeadline || activeShowcaseProduct.modelNo,
       productTitle: showcaseProductTitle || activeShowcaseProduct.name,
       tagline: showcaseTagline || activeShowcaseProduct.description,
@@ -1092,7 +1110,7 @@ export const UsersPage: React.FC = () => {
     };
     const canvas = await generateProductShowcaseCanvas(config);
     const link = document.createElement('a');
-    link.download = `PRAZTECH_${activeShowcaseProduct.modelNo}_Showcase.jpg`;
+    link.download = `PRAZTECH_${activeShowcaseProduct.modelNo}_${showcaseLanguage.toUpperCase()}_Showcase.jpg`;
     link.href = canvas.toDataURL('image/jpeg', 0.95);
     link.click();
     setActionSuccessMsg(`Downloaded high-resolution JPEG for ${activeShowcaseProduct.modelNo}`);
@@ -1102,6 +1120,7 @@ export const UsersPage: React.FC = () => {
     if (!activeShowcaseProduct) return;
     const config: ProductShowcaseConfig = {
       product: activeShowcaseProduct as any,
+      language: showcaseLanguage,
       headline: showcaseHeadline || activeShowcaseProduct.modelNo,
       productTitle: showcaseProductTitle || activeShowcaseProduct.name,
       tagline: showcaseTagline || activeShowcaseProduct.description,
@@ -5003,11 +5022,65 @@ export const UsersPage: React.FC = () => {
                   )}
                 </div>
 
+                {/* Photo Content Language */}
+                <div className="border border-[#dfd5e8] rounded-xl p-5 bg-white space-y-3.5 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-heading font-bold text-xs uppercase text-[#5e3e8b] tracking-wider flex items-center space-x-1.5">
+                      <Globe className="w-3.5 h-3.5" />
+                      <span>Photo Content Language</span>
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#efe7f7] text-[#5e3e8b] border border-[#dfd5e8]">
+                      {LANGUAGES.find(l => l.code === showcaseLanguage)?.nativeName || 'English'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#6e568b]">
+                    Translate all graphic elements, headers, specifications, and brochure stamps directly onto the generated image.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {LANGUAGES.map(lang => {
+                      const isSelected = showcaseLanguage === lang.code;
+                      return (
+                        <button
+                          key={lang.code}
+                          type="button"
+                          onClick={() => handleShowcaseLanguageChange(lang.code)}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-all cursor-pointer border ${
+                            isSelected
+                              ? 'bg-[#5e3e8b] text-white border-[#5e3e8b] shadow-2xs font-semibold'
+                              : 'bg-[#faf8fc] text-[#4a4058] border-[#dfd5e8] hover:bg-white hover:border-[#5e3e8b]'
+                          }`}
+                          title={`Generate graphic flyer in ${lang.name} (${lang.nativeName})`}
+                        >
+                          <span className="text-sm">{lang.flag}</span>
+                          <span>{lang.nativeName}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {/* 2. Text & Copy Customization */}
                 <div className="border border-[#dfd5e8] rounded-xl p-5 bg-white space-y-4">
-                  <span className="font-heading font-bold text-xs uppercase text-[#5e3e8b] tracking-wider block">
-                    2. Text & Copy Customization
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="font-heading font-bold text-xs uppercase text-[#5e3e8b] tracking-wider block">
+                      2. Text & Copy Customization
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (activeShowcaseProduct) {
+                          const copy = getProductTranslatedCopy(activeShowcaseProduct, showcaseLanguage);
+                          setShowcaseProductTitle(copy.title);
+                          setShowcaseTagline(copy.tagline);
+                        }
+                      }}
+                      className="text-[11px] text-[#5e3e8b] hover:underline flex items-center space-x-1 cursor-pointer font-medium"
+                      title="Re-populate title and tagline in selected language"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Auto-Translate Copy</span>
+                    </button>
+                  </div>
 
                   <div className="space-y-3 text-xs">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -5241,11 +5314,11 @@ export const UsersPage: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <SlidersHorizontal className="w-3.5 h-3.5 text-[#5e3e8b]" />
                       <span className="font-medium text-xs text-[#2e075d]">
-                        Specification and variant
+                        {getShowcaseText('specAndVariant', showcaseLanguage)}
                       </span>
                     </div>
                     <span className="text-[11px] text-industrial-500 font-mono">
-                      {activeShowcaseProduct.subModels.length} {activeShowcaseProduct.subModels.length === 1 ? 'option' : 'options'}
+                      {activeShowcaseProduct.subModels.length} {getShowcaseText('options', showcaseLanguage)}
                     </span>
                   </div>
                   <SubModelSelector
