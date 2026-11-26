@@ -108,6 +108,8 @@ export interface PastCommercialQuote {
   validityDays: number;
   paymentTerms: string;
   deliveryTimeline: string;
+  freightTerms?: string;
+  warrantyTerms?: string;
   generalNotes?: string;
   bankDetails?: {
     bankName?: string;
@@ -188,6 +190,7 @@ export interface CatalogueProduct {
   setIncludes?: string[];
   sizesDetail?: string[];
   compatibility?: string;
+  itemSpecifics?: Record<string, string>;
   subModels?: any[];
   images?: string[];
   slug: string;
@@ -383,11 +386,13 @@ export const UsersPage: React.FC = () => {
     whatsapp: '',
     gstin: '',
     address: '',
-    city: 'Delhi',
-    state: 'Delhi',
-    country: 'India',
+    city: '',
+    state: '',
+    country: '',
     paymentTerms: '50% advance, balance against Proforma Invoice / dispatch',
     deliveryTimeline: 'Ex-stock / Ready for dispatch within 2-3 business days',
+    freightTerms: 'Borne by consignee unless explicitly itemized above.',
+    warrantyTerms: '12 months manufacturer warranty against casting & grinding defects.',
     freightCharges: 0,
     generalNotes: 'Standard 1-year manufacturer guarantee on tooling precision and metallurgical integrity.',
     bankName: 'HDFC Bank Ltd',
@@ -418,6 +423,60 @@ export const UsersPage: React.FC = () => {
   const [isPreviewingQuoteModal, setIsPreviewingQuoteModal] = useState(false);
   const [isSendingQuote, setIsSendingQuote] = useState(false);
   const [quoteCopied, setQuoteCopied] = useState(false);
+  const [quoteProductSearchMap, setQuoteProductSearchMap] = useState<Record<string, string>>({});
+  const [activeQuoteProductDropdown, setActiveQuoteProductDropdown] = useState<string | null>(null);
+
+  const formatSubModelDetails = (sm: SubModel, idx?: number): string => {
+    if (!sm || typeof sm !== 'object') return idx !== undefined ? `Option #${idx + 1}` : 'Standard';
+    const parts: string[] = [];
+    const seen = new Set<string>();
+    const addPart = (label: string, val: any, prefix = '') => {
+      if (val === undefined || val === null || val === '' || val === '-') return;
+      const str = Array.isArray(val) ? val.filter(Boolean).join(', ') : String(val).trim();
+      if (!str || str === '-') return;
+      if (!seen.has(label)) {
+        seen.add(label);
+        parts.push(prefix ? `${prefix}: ${str}` : str);
+      }
+    };
+
+    addPart('modelNo', sm.modelNo);
+    if (sm.sizeInches || sm.sizeMm || sm.inches || sm.mm) {
+      const inchStr = sm.sizeInches || sm.inches || '';
+      const mmStr = sm.sizeMm || sm.mm || '';
+      const combined = inchStr && mmStr ? `${inchStr} (${mmStr})` : (inchStr || mmStr);
+      addPart('sizeCombined', combined);
+      seen.add('sizeInches'); seen.add('sizeMm'); seen.add('inches'); seen.add('mm');
+    }
+    addPart('size', sm.size, 'Size');
+    addPart('range', sm.range, 'Range');
+    addPart('inchRange', sm.inchRange, 'Inch Range');
+    addPart('metricRange', sm.metricRange, 'Metric Range');
+    addPart('dimensions', sm.dimensions, 'Dimensions');
+    addPart('angles', sm.angles, 'Angles');
+    addPart('thread', sm.thread, 'Thread');
+    addPart('drive', sm.drive, 'Drive');
+    addPart('pilots', sm.pilots, 'Pilots');
+    addPart('cutters', sm.cutters, 'Cutters');
+    addPart('reamers', sm.reamers, 'Reamers');
+    addPart('compatibility', sm.compatibility, 'Compatibility');
+    addPart('stoneColor', sm.stoneColor, 'Stone');
+    addPart('carat', sm.carat, 'Carat');
+    addPart('specification', sm.specification, 'Spec');
+    addPart('features', sm.features, 'Features');
+    addPart('voltage', sm.voltage, 'Voltage');
+    addPart('power', sm.power, 'Power');
+    addPart('speed', sm.speed, 'Speed');
+    addPart('profile', sm.profile, 'Profile');
+
+    // Include any remaining non-empty keys on SubModel
+    Object.entries(sm).forEach(([k, v]) => {
+      if (seen.has(k)) return;
+      addPart(k, v, k.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()));
+    });
+
+    return parts.length > 0 ? parts.join(' • ') : (idx !== undefined ? `Option #${idx + 1}` : 'Standard');
+  };
 
   // Past Commercial Quotations History
   const [pastQuotes, setPastQuotes] = useState<PastCommercialQuote[]>(() => {
@@ -642,16 +701,6 @@ export const UsersPage: React.FC = () => {
         if (item.id !== id) return item;
         const updated = { ...item, ...updates };
 
-        if (updates.name && !updates.isCustom) {
-          const matchedProd = catalogueList.find(p => p.name === updates.name || p.modelNo === updates.name);
-          if (matchedProd) {
-            updated.modelNo = matchedProd.modelNo;
-            updated.name = matchedProd.name;
-            updated.category = matchedProd.category;
-            updated.image = matchedProd.images?.[0] || '';
-          }
-        }
-
         updated.lineTotal = computeItemLineTotal(
           updated.quantity,
           updated.unitPrice,
@@ -664,10 +713,6 @@ export const UsersPage: React.FC = () => {
   };
 
   const handleRemoveQuoteItem = (id: string) => {
-    if (quoteItems.length <= 1) {
-      alert('At least one item is required in the quotation.');
-      return;
-    }
     setQuoteItems(prev => prev.filter(it => it.id !== id));
   };
 
@@ -682,35 +727,50 @@ export const UsersPage: React.FC = () => {
   };
 
   const getQuotationDataForExport = (): QuotationDetails => {
-    const validUntilDate = new Date(quoteForm.quoteDate);
-    validUntilDate.setDate(validUntilDate.getDate() + Number(quoteForm.validityDays || 30));
-    const validUntilStr = formatDateDDMMYY(validUntilDate);
+    let validUntilStr = '';
+    if (quoteForm.quoteDate && quoteForm.validityDays) {
+      const validUntilDate = new Date(quoteForm.quoteDate);
+      if (!isNaN(validUntilDate.getTime())) {
+        validUntilDate.setDate(validUntilDate.getDate() + Number(quoteForm.validityDays));
+        validUntilStr = `${formatDateDDMMYY(validUntilDate)} (${quoteForm.validityDays} Days)`;
+      }
+    } else if (quoteForm.validityDays) {
+      validUntilStr = `${quoteForm.validityDays} Days`;
+    }
 
     const enrichedItems: QuotationLineItem[] = quoteItems.map(it => {
       const matched = catalogueList.find(p => p.modelNo === it.modelNo || p.name === it.name);
       return {
         ...it,
-        image: it.image || matched?.images?.[0] || ''
+        image: it.image || matched?.images?.[0] || '',
+        productDetails: matched
+          ? {
+              compatibility: matched.compatibility,
+              sizesDetail: matched.sizesDetail,
+              itemSpecifics: matched.itemSpecifics,
+              setIncludes: matched.setIncludes
+            }
+          : it.productDetails
       };
     });
 
     return {
       quoteNumber: quoteForm.quoteNumber,
-      quoteDate: formatDateDDMMYY(quoteForm.quoteDate),
-      validUntil: `${validUntilStr} (${quoteForm.validityDays} Days)`,
+      quoteDate: quoteForm.quoteDate ? formatDateDDMMYY(quoteForm.quoteDate) : '',
+      validUntil: validUntilStr,
       currency: quoteForm.currency,
       currencySymbol: quoteForm.currencySymbol,
       customer: {
-        fullName: quoteForm.customerName || 'Prospective Customer',
-        company: quoteForm.company || '',
-        email: quoteForm.email || '',
-        phone: quoteForm.phone || quoteForm.whatsapp || '',
-        whatsapp: quoteForm.whatsapp || '',
-        address: quoteForm.address || '',
-        city: quoteForm.city || '',
-        state: quoteForm.state || '',
-        country: quoteForm.country || 'India',
-        gstin: quoteForm.gstin || ''
+        fullName: quoteForm.customerName,
+        company: quoteForm.company,
+        email: quoteForm.email,
+        phone: quoteForm.phone || quoteForm.whatsapp,
+        whatsapp: quoteForm.whatsapp,
+        address: quoteForm.address,
+        city: quoteForm.city,
+        state: quoteForm.state,
+        country: quoteForm.country,
+        gstin: quoteForm.gstin
       },
       items: enrichedItems,
       subtotal: quoteFinancials.subtotal,
@@ -721,6 +781,8 @@ export const UsersPage: React.FC = () => {
       grandTotal: quoteFinancials.grandTotal,
       paymentTerms: quoteForm.paymentTerms,
       deliveryTimeline: quoteForm.deliveryTimeline,
+      freightTerms: quoteForm.freightTerms,
+      warrantyTerms: quoteForm.warrantyTerms,
       generalNotes: quoteForm.generalNotes,
       bankDetails: {
         bankName: quoteForm.bankName,
@@ -737,18 +799,18 @@ export const UsersPage: React.FC = () => {
     const data = customQuoteData || getQuotationDataForExport();
     const entry: PastCommercialQuote = {
       id: `PQ-${data.quoteNumber || Date.now()}`,
-      quoteNumber: data.quoteNumber || 'PRZ-QT-PENDING',
-      quoteDate: data.quoteDate || new Date().toISOString().split('T')[0],
-      customerName: data.customer?.fullName || quoteForm.customerName || 'Prospective Buyer',
-      company: data.customer?.company || quoteForm.company || '',
-      email: data.customer?.email || quoteForm.email || '',
-      phone: data.customer?.phone || quoteForm.phone || '',
-      whatsapp: data.customer?.whatsapp || quoteForm.whatsapp || '',
-      address: data.customer?.address || quoteForm.address || '',
-      city: data.customer?.city || quoteForm.city || 'Delhi',
-      state: data.customer?.state || quoteForm.state || 'Delhi',
-      country: data.customer?.country || quoteForm.country || 'India',
-      gstin: data.customer?.gstin || quoteForm.gstin || '',
+      quoteNumber: data.quoteNumber || '',
+      quoteDate: data.quoteDate || '',
+      customerName: data.customer?.fullName ?? quoteForm.customerName ?? '',
+      company: data.customer?.company ?? quoteForm.company ?? '',
+      email: data.customer?.email ?? quoteForm.email ?? '',
+      phone: data.customer?.phone ?? quoteForm.phone ?? '',
+      whatsapp: data.customer?.whatsapp ?? quoteForm.whatsapp ?? '',
+      address: data.customer?.address ?? quoteForm.address ?? '',
+      city: data.customer?.city ?? quoteForm.city ?? '',
+      state: data.customer?.state ?? quoteForm.state ?? '',
+      country: data.customer?.country ?? quoteForm.country ?? '',
+      gstin: data.customer?.gstin ?? quoteForm.gstin ?? '',
       currency: data.currency || quoteForm.currency || 'INR',
       currencySymbol: data.currencySymbol || quoteForm.currencySymbol || '₹',
       subtotal: data.subtotal || 0,
@@ -774,9 +836,11 @@ export const UsersPage: React.FC = () => {
         lineTotal: it.lineTotal || (it.quantity * it.unitPrice)
       })),
       validityDays: quoteForm.validityDays || 30,
-      paymentTerms: data.paymentTerms || quoteForm.paymentTerms || '',
-      deliveryTimeline: data.deliveryTimeline || quoteForm.deliveryTimeline || '',
-      generalNotes: data.generalNotes || quoteForm.generalNotes || '',
+      paymentTerms: data.paymentTerms ?? quoteForm.paymentTerms ?? '',
+      deliveryTimeline: data.deliveryTimeline ?? quoteForm.deliveryTimeline ?? '',
+      freightTerms: data.freightTerms ?? quoteForm.freightTerms ?? '',
+      warrantyTerms: data.warrantyTerms ?? quoteForm.warrantyTerms ?? '',
+      generalNotes: data.generalNotes ?? quoteForm.generalNotes ?? '',
       bankDetails: data.bankDetails || {
         bankName: quoteForm.bankName,
         accountName: quoteForm.accountName,
@@ -829,18 +893,20 @@ export const UsersPage: React.FC = () => {
       whatsapp: pq.whatsapp || pq.phone,
       gstin: pq.gstin || '',
       address: pq.address || '',
-      city: pq.city || 'Delhi',
-      state: pq.state || 'Delhi',
-      country: pq.country || 'India',
-      paymentTerms: pq.paymentTerms || '',
-      deliveryTimeline: pq.deliveryTimeline || '',
+      city: pq.city ?? '',
+      state: pq.state ?? '',
+      country: pq.country ?? '',
+      paymentTerms: pq.paymentTerms ?? '',
+      deliveryTimeline: pq.deliveryTimeline ?? '',
+      freightTerms: pq.freightTerms ?? 'Borne by consignee unless explicitly itemized above.',
+      warrantyTerms: pq.warrantyTerms ?? '12 months manufacturer warranty against casting & grinding defects.',
       freightCharges: pq.freightCharges || 0,
-      generalNotes: pq.generalNotes || '',
-      bankName: pq.bankDetails?.bankName || 'HDFC Bank Ltd',
-      accountName: pq.bankDetails?.accountName || 'PRAZTECH ENGINEERING',
-      accountNumber: pq.bankDetails?.accountNumber || '50200084729103',
-      ifscCode: pq.bankDetails?.ifscCode || 'HDFC0000123',
-      branch: pq.bankDetails?.branch || 'Asaf Ali Road, New Delhi'
+      generalNotes: pq.generalNotes ?? '',
+      bankName: pq.bankDetails?.bankName ?? '',
+      accountName: pq.bankDetails?.accountName ?? '',
+      accountNumber: pq.bankDetails?.accountNumber ?? '',
+      ifscCode: pq.bankDetails?.ifscCode ?? '',
+      branch: pq.bankDetails?.branch ?? ''
     });
 
     if (pq.items && pq.items.length > 0) {
@@ -878,12 +944,26 @@ export const UsersPage: React.FC = () => {
         phone: pq.phone,
         whatsapp: pq.whatsapp,
         address: pq.address,
-        city: pq.city || 'Delhi',
-        state: pq.state || 'Delhi',
-        country: pq.country || 'India',
+        city: pq.city ?? '',
+        state: pq.state ?? '',
+        country: pq.country ?? '',
         gstin: pq.gstin
       },
-      items: pq.items || [],
+      items: (pq.items || []).map(it => {
+        const matched = catalogueList.find(p => p.modelNo === it.modelNo || p.name === it.name);
+        return {
+          ...it,
+          image: it.image || matched?.images?.[0] || '',
+          productDetails: it.productDetails || (matched
+            ? {
+                compatibility: matched.compatibility,
+                sizesDetail: matched.sizesDetail,
+                itemSpecifics: matched.itemSpecifics,
+                setIncludes: matched.setIncludes
+              }
+            : undefined)
+        };
+      }),
       subtotal: pq.subtotal,
       discountTotal: pq.discountTotal,
       taxableAmount: pq.taxableAmount,
@@ -892,13 +972,15 @@ export const UsersPage: React.FC = () => {
       grandTotal: pq.grandTotal,
       paymentTerms: pq.paymentTerms,
       deliveryTimeline: pq.deliveryTimeline,
+      freightTerms: pq.freightTerms,
+      warrantyTerms: pq.warrantyTerms,
       generalNotes: pq.generalNotes,
-      bankDetails: pq.bankDetails?.bankName ? {
+      bankDetails: pq.bankDetails ? {
         bankName: pq.bankDetails.bankName,
-        accountName: pq.bankDetails.accountName || 'PRAZTECH ENGINEERING',
-        accountNumber: pq.bankDetails.accountNumber || '50200084729103',
-        ifscCode: pq.bankDetails.ifscCode || 'HDFC0000123',
-        branch: pq.bankDetails.branch || 'New Delhi'
+        accountName: pq.bankDetails.accountName,
+        accountNumber: pq.bankDetails.accountNumber,
+        ifscCode: pq.bankDetails.ifscCode,
+        branch: pq.bankDetails.branch
       } : undefined,
       authorizedSignatory: 'Commercial Sales Desk'
     };
@@ -1225,15 +1307,6 @@ export const UsersPage: React.FC = () => {
   };
 
   const handleSendQuoteToCustomer = async () => {
-    if (!quoteForm.customerName || !quoteForm.email || !quoteForm.phone) {
-      alert('Customer Name, Email, and Phone are mandatory to send a formal quotation.');
-      return;
-    }
-    if (!quoteItems || quoteItems.length === 0) {
-      alert('Please add at least one tooling product to the quotation.');
-      return;
-    }
-
     setIsSendingQuote(true);
 
     const safeCur = quoteForm.currency === 'INR' || quoteForm.currencySymbol === '₹' ? 'Rs. ' : (quoteForm.currencySymbol || '$ ');
@@ -1347,11 +1420,13 @@ export const UsersPage: React.FC = () => {
         whatsapp: '',
         gstin: '',
         address: '',
-        city: 'Delhi',
-        state: 'Delhi',
-        country: 'India',
+        city: '',
+        state: '',
+        country: '',
         paymentTerms: '50% advance, balance against Proforma Invoice / dispatch',
         deliveryTimeline: 'Ex-stock / Ready for dispatch within 2-3 business days',
+        freightTerms: 'Borne by consignee unless explicitly itemized above.',
+        warrantyTerms: '12 months manufacturer warranty against casting & grinding defects.',
         freightCharges: 0,
         generalNotes: 'Standard 1-year manufacturer guarantee on tooling precision and metallurgical integrity.',
         bankName: 'HDFC Bank Ltd',
@@ -3974,10 +4049,9 @@ export const UsersPage: React.FC = () => {
               {/* Customer Inputs Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 text-xs">
                 <div>
-                  <label className="block font-medium text-[#2e075d] mb-1">Customer / Buyer Name *</label>
+                  <label className="block font-medium text-[#2e075d] mb-1">Customer / Buyer Name</label>
                   <input
                     type="text"
-                    required
                     value={quoteForm.customerName}
                     onChange={e => setQuoteForm({ ...quoteForm, customerName: e.target.value })}
                     placeholder="e.g. Anand Patel"
@@ -3997,10 +4071,9 @@ export const UsersPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block font-medium text-[#2e075d] mb-1">Email Address *</label>
+                  <label className="block font-medium text-[#2e075d] mb-1">Email Address</label>
                   <input
                     type="email"
-                    required
                     value={quoteForm.email}
                     onChange={e => setQuoteForm({ ...quoteForm, email: e.target.value })}
                     placeholder="buyer@example.com"
@@ -4009,10 +4082,9 @@ export const UsersPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block font-medium text-[#2e075d] mb-1">Mobile / Phone *</label>
+                  <label className="block font-medium text-[#2e075d] mb-1">Mobile / Phone</label>
                   <input
                     type="tel"
-                    required
                     value={quoteForm.phone}
                     onChange={e => setQuoteForm({ ...quoteForm, phone: e.target.value })}
                     placeholder="+91 98765 43210"
@@ -4204,96 +4276,375 @@ export const UsersPage: React.FC = () => {
                           >
                             <Copy className="w-3.5 h-3.5" />
                           </button>
-                          {quoteItems.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveQuoteItem(item.id)}
-                              className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded cursor-pointer"
-                              title="Remove item from quotation"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveQuoteItem(item.id)}
+                            className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded cursor-pointer"
+                            title="Remove item from quotation"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
 
-                      {/* Item Identification Fields */}
-                      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 text-xs">
-                        {/* Product selection or custom name */}
-                        <div className="md:col-span-6">
-                          <label className="block font-medium text-[#2e075d] mb-1">
-                            {item.isCustom ? 'Custom Tooling Description *' : 'Select Catalogue Product *'}
-                          </label>
-                          {item.isCustom ? (
-                            <input
-                              type="text"
-                              value={item.name}
-                              onChange={e => handleUpdateQuoteItem(item.id, { name: e.target.value })}
-                              placeholder="e.g. Special 45° Diamond Reversible Cutter, 42mm OD"
-                              className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
-                            />
-                          ) : (
-                            <select
-                              value={matchedProduct?.slug || ''}
-                              onChange={e => {
-                                const p = catalogueList.find(x => x.slug === e.target.value);
-                                if (p) {
+                      {/* Product Image Preview + Identification Fields */}
+                      <div className="flex flex-col sm:flex-row gap-4 text-xs">
+                        {/* Live Product Image Preview */}
+                        <div className="shrink-0 flex flex-col items-center gap-1.5">
+                          {(() => {
+                            const displayImage = item.image || matchedProduct?.images?.[0] || '';
+                            const extraImages = matchedProduct?.images || [];
+                            return (
+                              <>
+                                <div className="w-20 h-20 rounded-lg border border-[#dfd5e8] bg-[#faf8fc] flex items-center justify-center overflow-hidden p-1">
+                                  {displayImage ? (
+                                    <img
+                                      src={displayImage}
+                                      alt={item.name || item.modelNo || 'Product'}
+                                      className="w-full h-full object-contain"
+                                      onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                                    />
+                                  ) : (
+                                    <span className="text-[10px] text-[#9080a5] text-center leading-tight">
+                                      {item.isCustom ? 'Custom\nTool' : 'No\nImage'}
+                                    </span>
+                                  )}
+                                </div>
+                                {extraImages.length > 1 && (
+                                  <div className="flex items-center gap-1 flex-wrap max-w-[84px] justify-center">
+                                    {extraImages.slice(0, 4).map((imgUrl, imgIdx) => (
+                                      <button
+                                        key={imgIdx}
+                                        type="button"
+                                        onClick={() => handleUpdateQuoteItem(item.id, { image: imgUrl })}
+                                        className={`w-4 h-4 rounded border overflow-hidden cursor-pointer ${
+                                          displayImage === imgUrl ? 'border-[#2e075d] ring-1 ring-[#5e3e8b]' : 'border-[#dfd5e8] opacity-70 hover:opacity-100'
+                                        }`}
+                                        title={`Use product image #${imgIdx + 1}`}
+                                      >
+                                        <img src={imgUrl} alt="" className="w-full h-full object-cover" />
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
+
+                        <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-3">
+                          {/* Typable Searchable Catalogue Product Combobox (when not custom) */}
+                          {!item.isCustom && (
+                            <div className="md:col-span-6 relative">
+                              <label className="block font-medium text-[#2e075d] mb-1">
+                                Select Catalogue Product (Type to search & auto-fill)
+                              </label>
+                              {(() => {
+                                const isDropdownOpen = activeQuoteProductDropdown === item.id;
+                                const searchVal = quoteProductSearchMap[item.id] ?? '';
+                                const displayVal = isDropdownOpen
+                                  ? searchVal
+                                  : (matchedProduct ? `${matchedProduct.modelNo} — ${matchedProduct.name}` : searchVal);
+                                const q = searchVal.trim().toLowerCase();
+                                const filteredProducts = q
+                                  ? catalogueList.filter(p =>
+                                      (p.modelNo || '').toLowerCase().includes(q) ||
+                                      (p.name || '').toLowerCase().includes(q) ||
+                                      (p.category || '').toLowerCase().includes(q) ||
+                                      (p.slug || '').toLowerCase().includes(q)
+                                    )
+                                  : catalogueList;
+
+                                const selectProductForItem = (p: CatalogueProduct) => {
                                   const defVariant = p.subModels?.[0]
-                                    ? (p.subModels[0].sizeInches ? `${p.subModels[0].sizeInches} (${p.subModels[0].sizeMm || ''})` : p.subModels[0].modelNo || p.subModels[0].size || 'Standard')
-                                    : 'Standard';
+                                    ? formatSubModelDetails(p.subModels[0], 0)
+                                    : (p.sizesDetail?.length ? p.sizesDetail[0] : 'Standard');
                                   handleUpdateQuoteItem(item.id, {
                                     modelNo: p.modelNo,
                                     name: p.name,
                                     category: p.category,
+                                    image: p.images?.[0] || '',
                                     selectedVariant: defVariant
                                   });
-                                }
-                              }}
-                              className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none cursor-pointer"
-                            >
-                              {catalogueList.map(p => (
-                                <option key={p.slug} value={p.slug}>
-                                  {p.modelNo} — {p.name}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                        </div>
+                                  setQuoteProductSearchMap(prev => ({ ...prev, [item.id]: '' }));
+                                  setActiveQuoteProductDropdown(null);
+                                };
 
-                        {/* Variant / Sub-model / Specific Size */}
-                        <div className="md:col-span-6">
-                          <label className="block font-medium text-[#2e075d] mb-1">
-                            Selected Variant / Size / Spec Option
-                          </label>
-                          {!item.isCustom && availableSubModels.length > 0 ? (
-                            <select
-                              value={item.selectedVariant}
-                              onChange={e => handleUpdateQuoteItem(item.id, { selectedVariant: e.target.value })}
-                              className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none cursor-pointer"
-                            >
-                              <option value="Standard Model">Standard Unit</option>
-                              {availableSubModels.map((sm, smIdx) => {
-                                const label = sm.sizeInches
-                                  ? `${sm.sizeInches} (${sm.sizeMm || ''})`
-                                  : sm.modelNo || sm.size || sm.specification || `Option #${smIdx + 1}`;
                                 return (
-                                  <option key={smIdx} value={label}>
-                                    {label} {sm.stoneColor ? `[${sm.stoneColor} Stone]` : ''}
-                                  </option>
+                                  <div className="relative">
+                                    <div className="relative flex items-center">
+                                      <Search className="w-3.5 h-3.5 text-[#6e568b] absolute left-3 pointer-events-none" />
+                                      <input
+                                        type="text"
+                                        value={displayVal}
+                                        placeholder="Type model #, product name, or category..."
+                                        onFocus={() => {
+                                          setActiveQuoteProductDropdown(item.id);
+                                        }}
+                                        onBlur={() => {
+                                          setTimeout(() => {
+                                            setActiveQuoteProductDropdown(prev => (prev === item.id ? null : prev));
+                                          }, 180);
+                                        }}
+                                        onChange={e => {
+                                          setQuoteProductSearchMap(prev => ({ ...prev, [item.id]: e.target.value }));
+                                          setActiveQuoteProductDropdown(item.id);
+                                        }}
+                                        onKeyDown={e => {
+                                          if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            if (filteredProducts.length > 0) {
+                                              selectProductForItem(filteredProducts[0]);
+                                            }
+                                          } else if (e.key === 'Escape') {
+                                            setActiveQuoteProductDropdown(null);
+                                          }
+                                        }}
+                                        className="w-full pl-8 pr-14 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none text-xs"
+                                      />
+                                      <div className="absolute right-2 flex items-center space-x-1">
+                                        {searchVal && (
+                                          <button
+                                            type="button"
+                                            onMouseDown={e => e.preventDefault()}
+                                            onClick={() => {
+                                              setQuoteProductSearchMap(prev => ({ ...prev, [item.id]: '' }));
+                                              setActiveQuoteProductDropdown(item.id);
+                                            }}
+                                            className="p-0.5 text-[#9080a5] hover:text-[#5e3e8b] cursor-pointer"
+                                            title="Clear search"
+                                          >
+                                            <X className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                        <button
+                                          type="button"
+                                          onMouseDown={e => e.preventDefault()}
+                                          onClick={() => {
+                                            setActiveQuoteProductDropdown(prev => (prev === item.id ? null : item.id));
+                                          }}
+                                          className="p-0.5 text-[#9080a5] hover:text-[#5e3e8b] cursor-pointer"
+                                          title="Toggle product list"
+                                        >
+                                          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isDropdownOpen ? 'rotate-180 text-[#5e3e8b]' : ''}`} />
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {isDropdownOpen && (
+                                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-[#dfd5e8] rounded-xl shadow-xl max-h-64 overflow-y-auto z-40 divide-y divide-[#f5f1f9]">
+                                        <div className="px-3 py-1.5 bg-[#faf8fc] text-[10px] font-bold text-[#6e568b] uppercase tracking-wider flex items-center justify-between sticky top-0">
+                                          <span>Matching Products ({filteredProducts.length})</span>
+                                          {searchVal && <span className="text-[#5e3e8b]">"{searchVal}"</span>}
+                                        </div>
+                                        {filteredProducts.length === 0 ? (
+                                          <div className="px-3 py-4 text-center text-[#9080a5] text-xs">
+                                            No products match "{searchVal}"
+                                          </div>
+                                        ) : (
+                                          filteredProducts.map(p => (
+                                            <button
+                                              key={p.slug}
+                                              type="button"
+                                              onMouseDown={e => {
+                                                e.preventDefault();
+                                                selectProductForItem(p);
+                                              }}
+                                              className={`w-full text-left px-3 py-2 hover:bg-[#efe7f7] flex items-center gap-2.5 transition-colors cursor-pointer ${
+                                                matchedProduct?.slug === p.slug ? 'bg-[#f5effa]' : ''
+                                              }`}
+                                            >
+                                              {p.images?.[0] ? (
+                                                <img
+                                                  src={p.images[0]}
+                                                  alt=""
+                                                  className="w-8 h-8 rounded border border-[#dfd5e8] object-contain bg-white shrink-0"
+                                                />
+                                              ) : (
+                                                <div className="w-8 h-8 rounded border border-[#dfd5e8] bg-[#faf8fc] shrink-0" />
+                                              )}
+                                              <div className="min-w-0 flex-1">
+                                                <div className="font-mono font-bold text-[#2e075d] text-[11px] truncate">
+                                                  {p.modelNo} <span className="font-sans font-normal text-[#6e568b]">• {p.category}</span>
+                                                </div>
+                                                <div className="text-[#2e075d] truncate text-xs">{p.name}</div>
+                                              </div>
+                                              {p.subModels && p.subModels.length > 0 && (
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#efe7f7] text-[#5e3e8b] font-medium shrink-0">
+                                                  {p.subModels.length} specs
+                                                </span>
+                                              )}
+                                            </button>
+                                          ))
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
                                 );
-                              })}
-                            </select>
-                          ) : (
+                              })()}
+                            </div>
+                          )}
+
+                          {/* Editable Model / SKU */}
+                          <div className={item.isCustom ? 'md:col-span-4' : 'md:col-span-6'}>
+                            <label className="block font-medium text-[#2e075d] mb-1">
+                              Model / SKU
+                            </label>
                             <input
                               type="text"
-                              value={item.selectedVariant || ''}
-                              onChange={e => handleUpdateQuoteItem(item.id, { selectedVariant: e.target.value })}
-                              placeholder="e.g. 5.5mm pilot, 45 degree angle, red ruby stone"
+                              value={item.modelNo}
+                              onChange={e => handleUpdateQuoteItem(item.id, { modelNo: e.target.value })}
+                              placeholder="e.g. PSH-VGKP-H"
+                              className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white font-mono focus:border-[#5e3e8b] focus:outline-none"
+                            />
+                          </div>
+
+                          {/* Editable Product Name / Description */}
+                          <div className={item.isCustom ? 'md:col-span-8' : 'md:col-span-6'}>
+                            <label className="block font-medium text-[#2e075d] mb-1">
+                              {item.isCustom ? 'Custom Tooling Description' : 'Product Name / Description'}
+                            </label>
+                            <input
+                              type="text"
+                              value={item.name}
+                              onChange={e => handleUpdateQuoteItem(item.id, { name: e.target.value })}
+                              placeholder="e.g. All in One Valve Seat Grinding Kit"
                               className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
                             />
-                          )}
+                          </div>
+
+                          {/* Variant / Sub-model / Specific Size (quick-pick + editable input) */}
+                          <div className={item.isCustom ? 'md:col-span-12' : 'md:col-span-6'}>
+                            <label className="block font-medium text-[#2e075d] mb-1">
+                              Selected Variant / Size / Spec Option
+                            </label>
+                            <div className="space-y-1.5">
+                              {!item.isCustom && availableSubModels.length > 0 && (
+                                <select
+                                  value={
+                                    availableSubModels.some((sm, smIdx) => formatSubModelDetails(sm, smIdx) === item.selectedVariant)
+                                      ? item.selectedVariant
+                                      : ''
+                                  }
+                                  onChange={e => {
+                                    if (e.target.value) {
+                                      handleUpdateQuoteItem(item.id, { selectedVariant: e.target.value });
+                                    }
+                                  }}
+                                  className="w-full px-3 py-1.5 rounded-lg border border-[#dfd5e8] bg-[#faf8fc] text-[#5e3e8b] focus:border-[#5e3e8b] focus:outline-none cursor-pointer"
+                                >
+                                  <option value="">-- Quick-pick variant (or edit below) --</option>
+                                  <option value="Standard Model">Standard Unit</option>
+                                  {availableSubModels.map((sm, smIdx) => {
+                                    const label = formatSubModelDetails(sm, smIdx);
+                                    return (
+                                      <option key={smIdx} value={label}>
+                                        {label}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                              )}
+                              <input
+                                type="text"
+                                value={item.selectedVariant || ''}
+                                onChange={e => handleUpdateQuoteItem(item.id, { selectedVariant: e.target.value })}
+                                placeholder="e.g. 5.5mm pilot, 45 degree angle, red ruby stone"
+                                className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                              />
+                            </div>
+                          </div>
                         </div>
                       </div>
+
+                      {/* Full Product Sizes, Specifications & Variants Reference Panel */}
+                      {matchedProduct && (
+                        <div className="bg-[#faf8fc] border border-[#dfd5e8] rounded-lg p-3.5 text-[11px] space-y-2.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e8dff2] pb-2">
+                            <span className="font-bold uppercase tracking-wider text-[#5e3e8b] text-[10px]">
+                              Product Sizes & Specifications ({matchedProduct.modelNo})
+                            </span>
+                            {matchedProduct.compatibility && (
+                              <span className="text-[#6e568b]">
+                                <strong className="text-[#2e075d]">Compatibility:</strong> {matchedProduct.compatibility}
+                              </span>
+                            )}
+                          </div>
+
+                          {matchedProduct.sizesDetail && matchedProduct.sizesDetail.length > 0 && (
+                            <div>
+                              <span className="font-semibold text-[#2e075d] block mb-1">Available Sizes:</span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {matchedProduct.sizesDetail.map((sz, szIdx) => (
+                                  <button
+                                    key={szIdx}
+                                    type="button"
+                                    onClick={() => handleUpdateQuoteItem(item.id, { selectedVariant: sz })}
+                                    className="px-2 py-0.5 rounded bg-white border border-[#dfd5e8] text-[#2e075d] hover:border-[#5e3e8b] hover:bg-[#efe7f7] transition-colors cursor-pointer"
+                                    title="Click to apply as Selected Variant"
+                                  >
+                                    {sz}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {matchedProduct.itemSpecifics && Object.keys(matchedProduct.itemSpecifics).length > 0 && (
+                            <div>
+                              <span className="font-semibold text-[#2e075d] block mb-1">Technical Specifications:</span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                                {Object.entries(matchedProduct.itemSpecifics).map(([specKey, specVal]) => (
+                                  <div key={specKey} className="bg-white border border-[#e8dff2] rounded px-2 py-1">
+                                    <span className="font-medium text-[#6e568b]">{specKey}: </span>
+                                    <span className="text-[#2e075d] font-medium">{specVal}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {matchedProduct.setIncludes && matchedProduct.setIncludes.length > 0 && (
+                            <div>
+                              <span className="font-semibold text-[#2e075d]">Set Includes: </span>
+                              <span className="text-[#6e568b]">{matchedProduct.setIncludes.join(' • ')}</span>
+                            </div>
+                          )}
+
+                          {availableSubModels.length > 0 && (
+                            <div>
+                              <span className="font-semibold text-[#2e075d] block mb-1">
+                                Variant / Sub-Model Breakdown ({availableSubModels.length} options — click any to apply):
+                              </span>
+                              <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                                {availableSubModels.map((sm, smIdx) => {
+                                  const summary = formatSubModelDetails(sm, smIdx);
+                                  const isSelected = item.selectedVariant === summary;
+                                  return (
+                                    <button
+                                      key={smIdx}
+                                      type="button"
+                                      onClick={() =>
+                                        handleUpdateQuoteItem(item.id, {
+                                          selectedVariant: summary,
+                                          ...(sm.modelNo ? { modelNo: sm.modelNo } : {})
+                                        })
+                                      }
+                                      className={`w-full text-left px-2.5 py-1.5 rounded border transition-colors cursor-pointer ${
+                                        isSelected
+                                          ? 'bg-[#efe7f7] border-[#5e3e8b] text-[#2e075d] font-medium'
+                                          : 'bg-white border-[#e8dff2] text-[#6e568b] hover:border-[#5e3e8b] hover:text-[#2e075d]'
+                                      }`}
+                                    >
+                                      {summary}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Pricing, Quantity, Discount, GST Grid */}
                       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-1 text-xs">
@@ -4310,7 +4661,7 @@ export const UsersPage: React.FC = () => {
 
                         <div>
                           <label className="block font-medium text-[#2e075d] mb-1">
-                            Unit Rate ({quoteForm.currencySymbol}) *
+                            Unit Rate ({quoteForm.currencySymbol})
                           </label>
                           <input
                             type="number"
@@ -4409,27 +4760,41 @@ export const UsersPage: React.FC = () => {
 
                 <div>
                   <label className="block font-medium text-[#2e075d] mb-1">Payment Terms</label>
-                  <select
-                    value={quoteForm.paymentTerms}
-                    onChange={e => setQuoteForm({ ...quoteForm, paymentTerms: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none cursor-pointer"
-                  >
-                    <option value="50% advance, balance against Proforma Invoice / dispatch">
-                      50% advance, balance against Proforma Invoice / dispatch (Standard)
-                    </option>
-                    <option value="100% advance against Proforma Invoice">
-                      100% advance against Proforma Invoice
-                    </option>
-                    <option value="50% advance, balance against B/L copy (International Exports)">
-                      50% advance, balance against B/L copy (Exports)
-                    </option>
-                    <option value="Net 30 days against authorized Purchase Order">
-                      Net 30 days against authorized Purchase Order
-                    </option>
-                    <option value="Immediate settlement upon delivery">
-                      Immediate settlement upon delivery
-                    </option>
-                  </select>
+                  <div className="space-y-1.5">
+                    <select
+                      value=""
+                      onChange={e => {
+                        if (e.target.value) {
+                          setQuoteForm({ ...quoteForm, paymentTerms: e.target.value });
+                        }
+                      }}
+                      className="w-full px-3 py-1.5 rounded-lg border border-[#dfd5e8] bg-[#faf8fc] text-[#5e3e8b] focus:border-[#5e3e8b] focus:outline-none cursor-pointer"
+                    >
+                      <option value="">-- Quick-pick payment preset (or edit below) --</option>
+                      <option value="50% advance, balance against Proforma Invoice / dispatch">
+                        50% advance, balance against Proforma Invoice / dispatch (Standard)
+                      </option>
+                      <option value="100% advance against Proforma Invoice">
+                        100% advance against Proforma Invoice
+                      </option>
+                      <option value="50% advance, balance against B/L copy (International Exports)">
+                        50% advance, balance against B/L copy (Exports)
+                      </option>
+                      <option value="Net 30 days against authorized Purchase Order">
+                        Net 30 days against authorized Purchase Order
+                      </option>
+                      <option value="Immediate settlement upon delivery">
+                        Immediate settlement upon delivery
+                      </option>
+                    </select>
+                    <input
+                      type="text"
+                      value={quoteForm.paymentTerms}
+                      onChange={e => setQuoteForm({ ...quoteForm, paymentTerms: e.target.value })}
+                      placeholder="Enter custom payment terms (or leave empty to omit)"
+                      className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -4439,6 +4804,28 @@ export const UsersPage: React.FC = () => {
                     value={quoteForm.deliveryTimeline}
                     onChange={e => setQuoteForm({ ...quoteForm, deliveryTimeline: e.target.value })}
                     placeholder="e.g. Ex-stock / Ready for dispatch within 2-3 business days"
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">Freight & Insurance Terms</label>
+                  <input
+                    type="text"
+                    value={quoteForm.freightTerms}
+                    onChange={e => setQuoteForm({ ...quoteForm, freightTerms: e.target.value })}
+                    placeholder="e.g. Borne by consignee unless explicitly itemized above."
+                    className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-[#2e075d] mb-1">Warranty / Guarantee Terms</label>
+                  <input
+                    type="text"
+                    value={quoteForm.warrantyTerms}
+                    onChange={e => setQuoteForm({ ...quoteForm, warrantyTerms: e.target.value })}
+                    placeholder="e.g. 12 months manufacturer warranty against casting & grinding defects."
                     className="w-full px-3 py-2 rounded-lg border border-[#dfd5e8] bg-white focus:border-[#5e3e8b] focus:outline-none"
                   />
                 </div>
@@ -4475,10 +4862,47 @@ export const UsersPage: React.FC = () => {
 
               {/* Bank Remittance Details */}
               <div className="bg-[#fcfbfe] border border-[#dfd5e8] rounded-xl p-5 space-y-4 text-xs">
-                <h4 className="font-heading font-medium text-xs text-[#2e075d] uppercase tracking-wider flex items-center space-x-1.5">
-                  <ShieldCheck className="w-4 h-4 text-[#5e3e8b]" />
-                  <span>4. Bank Remittance Details (For Invoice / Wire)</span>
-                </h4>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="font-heading font-medium text-xs text-[#2e075d] uppercase tracking-wider flex items-center space-x-1.5">
+                    <ShieldCheck className="w-4 h-4 text-[#5e3e8b]" />
+                    <span>4. Bank Remittance Details (For Invoice / Wire)</span>
+                  </h4>
+                  <label className="inline-flex items-center space-x-2 cursor-pointer select-none text-[11px] font-medium text-[#5e3e8b] bg-[#efe7f7] px-2.5 py-1 rounded-lg border border-[#dfd5e8] hover:bg-[#e5d8f2] transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(
+                        quoteForm.bankName ||
+                        quoteForm.accountName ||
+                        quoteForm.accountNumber ||
+                        quoteForm.ifscCode ||
+                        quoteForm.branch
+                      )}
+                      onChange={e => {
+                        if (e.target.checked) {
+                          setQuoteForm(prev => ({
+                            ...prev,
+                            bankName: 'HDFC Bank Ltd',
+                            accountName: 'PRAZTECH ENGINEERING',
+                            accountNumber: '50200084729103',
+                            ifscCode: 'HDFC0000123',
+                            branch: 'Asaf Ali Road, New Delhi'
+                          }));
+                        } else {
+                          setQuoteForm(prev => ({
+                            ...prev,
+                            bankName: '',
+                            accountName: '',
+                            accountNumber: '',
+                            ifscCode: '',
+                            branch: ''
+                          }));
+                        }
+                      }}
+                      className="rounded border-[#5e3e8b] text-[#2e075d] focus:ring-[#5e3e8b] cursor-pointer"
+                    />
+                    <span>Fill Bank Details</span>
+                  </label>
+                </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -5404,49 +5828,88 @@ export const UsersPage: React.FC = () => {
                 </div>
 
                 {/* Metadata Strip */}
-                <div className="bg-[#faf8fc] border border-[#dfd5e8] p-3 rounded-lg grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                  <div>
-                    <span className="text-[10px] text-[#6e568b] uppercase font-bold block">Quotation No</span>
-                    <span className="font-mono font-bold text-[#5e3e8b]">{quoteForm.quoteNumber}</span>
+                {(quoteForm.quoteNumber?.trim() || quoteForm.quoteDate?.trim() || quoteForm.validityDays || quoteForm.currency?.trim()) && (
+                  <div className="bg-[#faf8fc] border border-[#dfd5e8] p-3 rounded-lg grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    {quoteForm.quoteNumber?.trim() && (
+                      <div>
+                        <span className="text-[10px] text-[#6e568b] uppercase font-bold block">Quotation No</span>
+                        <span className="font-mono font-bold text-[#5e3e8b]">{quoteForm.quoteNumber}</span>
+                      </div>
+                    )}
+                    {quoteForm.quoteDate?.trim() && (
+                      <div>
+                        <span className="text-[10px] text-[#6e568b] uppercase font-bold block">Quotation Date</span>
+                        <span className="font-medium text-[#2e075d]">{formatDateDDMMYY(quoteForm.quoteDate)}</span>
+                      </div>
+                    )}
+                    {quoteForm.quoteDate?.trim() && quoteForm.validityDays > 0 && (
+                      <div>
+                        <span className="text-[10px] text-[#6e568b] uppercase font-bold block">Valid Until</span>
+                        <span className="font-medium text-[#2e075d]">
+                          {formatDateDDMMYY(new Date(new Date(quoteForm.quoteDate).getTime() + quoteForm.validityDays * 86400000))} ({quoteForm.validityDays} Days)
+                        </span>
+                      </div>
+                    )}
+                    {quoteForm.currency?.trim() && (
+                      <div>
+                        <span className="text-[10px] text-[#6e568b] uppercase font-bold block">Currency</span>
+                        <span className="font-bold text-[#2e075d]">{quoteForm.currency} ({quoteForm.currencySymbol})</span>
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <span className="text-[10px] text-[#6e568b] uppercase font-bold block">Quotation Date</span>
-                    <span className="font-medium text-[#2e075d]">{formatDateDDMMYY(quoteForm.quoteDate)}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-[#6e568b] uppercase font-bold block">Valid Until</span>
-                    <span className="font-medium text-[#2e075d]">
-                      {formatDateDDMMYY(new Date(new Date(quoteForm.quoteDate).getTime() + quoteForm.validityDays * 86400000))} ({quoteForm.validityDays} Days)
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-[#6e568b] uppercase font-bold block">Currency</span>
-                    <span className="font-bold text-[#2e075d]">{quoteForm.currency} ({quoteForm.currencySymbol})</span>
-                  </div>
-                </div>
+                )}
 
                 {/* Buyer / Consignee Details */}
-                <div className="border border-[#dfd5e8] rounded-lg p-4 space-y-2">
-                  <div className="text-[11px] font-bold uppercase text-[#5e3e8b] tracking-wider">
-                    Buyer / Consignee Details
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div>
-                      <div className="font-bold text-sm text-[#2e075d]">{quoteForm.customerName || 'Prospective Buyer'}</div>
-                      <div className="text-[#6e568b]">{quoteForm.company || 'Workshop / Machine Shop Client'}</div>
-                      <div className="text-[#6e568b] mt-1">
-                        {[quoteForm.address, quoteForm.city, quoteForm.state, quoteForm.country].filter(Boolean).join(', ') || 'India'}
+                {(() => {
+                  const addrStr = [quoteForm.address, quoteForm.city, quoteForm.state, quoteForm.country]
+                    .map(s => (s || '').trim())
+                    .filter(Boolean)
+                    .join(', ');
+                  const phoneStr = (quoteForm.phone || quoteForm.whatsapp || '').trim();
+                  const hasCustomer = !!(
+                    quoteForm.customerName?.trim() ||
+                    quoteForm.company?.trim() ||
+                    addrStr ||
+                    quoteForm.email?.trim() ||
+                    phoneStr ||
+                    quoteForm.gstin?.trim()
+                  );
+                  if (!hasCustomer) return null;
+                  return (
+                    <div className="border border-[#dfd5e8] rounded-lg p-4 space-y-2">
+                      <div className="text-[11px] font-bold uppercase text-[#5e3e8b] tracking-wider">
+                        Buyer / Consignee Details
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div>
+                          {quoteForm.customerName?.trim() && (
+                            <div className="font-bold text-sm text-[#2e075d]">{quoteForm.customerName}</div>
+                          )}
+                          {quoteForm.company?.trim() && (
+                            <div className="text-[#6e568b]">{quoteForm.company}</div>
+                          )}
+                          {addrStr && (
+                            <div className="text-[#6e568b] mt-1">{addrStr}</div>
+                          )}
+                        </div>
+                        <div className="space-y-1 text-right sm:text-right">
+                          {quoteForm.email?.trim() && (
+                            <div><span className="text-[#6e568b]">Email: </span><span className="font-mono font-medium">{quoteForm.email}</span></div>
+                          )}
+                          {phoneStr && (
+                            <div><span className="text-[#6e568b]">Phone: </span><span className="font-mono font-medium">{phoneStr}</span></div>
+                          )}
+                          {quoteForm.gstin?.trim() && (
+                            <div><span className="text-[#6e568b]">GSTIN: </span><span className="font-mono font-medium">{quoteForm.gstin}</span></div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div className="space-y-1 text-right sm:text-right">
-                      <div><span className="text-[#6e568b]">Email: </span><span className="font-mono font-medium">{quoteForm.email || '—'}</span></div>
-                      <div><span className="text-[#6e568b]">Phone: </span><span className="font-mono font-medium">{quoteForm.phone || quoteForm.whatsapp || '—'}</span></div>
-                      <div><span className="text-[#6e568b]">GSTIN: </span><span className="font-mono font-medium">{quoteForm.gstin || 'Unregistered / Not Provided'}</span></div>
-                    </div>
-                  </div>
-                </div>
+                  );
+                })()}
 
                 {/* Itemized Table */}
+                {quoteItems.some(it => it.modelNo?.trim() || it.name?.trim() || it.selectedVariant?.trim() || it.notes?.trim() || Number(it.unitPrice) > 0) && (
                 <div className="overflow-x-auto border border-[#dfd5e8] rounded-lg">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-[#2e075d] text-white text-[11px] font-bold">
@@ -5492,6 +5955,25 @@ export const UsersPage: React.FC = () => {
                               {it.notes && (
                                 <div className="text-[10px] text-[#6e568b] italic">Note: {it.notes}</div>
                               )}
+                              {matchedProduct && (
+                                <div className="mt-1 space-y-0.5 text-[10px] text-[#6e568b]">
+                                  {matchedProduct.compatibility && (
+                                    <div><strong>Compatibility:</strong> {matchedProduct.compatibility}</div>
+                                  )}
+                                  {matchedProduct.sizesDetail && matchedProduct.sizesDetail.length > 0 && (
+                                    <div><strong>Sizes:</strong> {matchedProduct.sizesDetail.join(', ')}</div>
+                                  )}
+                                  {matchedProduct.itemSpecifics && Object.keys(matchedProduct.itemSpecifics).length > 0 && (
+                                    <div>
+                                      <strong>Specs:</strong>{' '}
+                                      {Object.entries(matchedProduct.itemSpecifics).map(([k, v]) => `${k}: ${v}`).join(' | ')}
+                                    </div>
+                                  )}
+                                  {matchedProduct.setIncludes && matchedProduct.setIncludes.length > 0 && (
+                                    <div><strong>Includes:</strong> {matchedProduct.setIncludes.join(', ')}</div>
+                                  )}
+                                </div>
+                              )}
                             </td>
                             <td className="py-2.5 px-3 text-center font-bold text-[#2e075d]">{it.quantity}</td>
                             <td className="py-2.5 px-3 text-right font-mono">
@@ -5510,90 +5992,112 @@ export const UsersPage: React.FC = () => {
                     </tbody>
                   </table>
                 </div>
+                )}
 
                 {/* Summary & Terms Section */}
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-6 pt-2">
                   {/* Left Column: Words, Bank Details, Terms */}
                   <div className="md:col-span-7 space-y-4">
-                    <div className="bg-[#fcfbfe] border border-[#dfd5e8] p-3 rounded-lg">
-                      <div className="text-[10px] uppercase font-bold text-[#6e568b]">Amount Chargeable (in words)</div>
-                      <div className="font-semibold text-xs text-[#2e075d] italic mt-0.5">
-                        {amountToWords(quoteFinancials.grandTotal, quoteForm.currency)}
+                    {quoteFinancials.grandTotal > 0 && (
+                      <div className="bg-[#fcfbfe] border border-[#dfd5e8] p-3 rounded-lg">
+                        <div className="text-[10px] uppercase font-bold text-[#6e568b]">Amount Chargeable (in words)</div>
+                        <div className="font-semibold text-xs text-[#2e075d] italic mt-0.5">
+                          {amountToWords(quoteFinancials.grandTotal, quoteForm.currency)}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    <div className="bg-[#faf8fc] border border-[#dfd5e8] p-3 rounded-lg text-xs space-y-1">
-                      <div className="font-bold text-[#5e3e8b] text-[11px] uppercase tracking-wide">
-                        Direct Bank Wire Transfer (NEFT / RTGS / IMPS)
+                    {(quoteForm.bankName?.trim() || quoteForm.branch?.trim() || quoteForm.accountName?.trim() || quoteForm.accountNumber?.trim() || quoteForm.ifscCode?.trim()) && (
+                      <div className="bg-[#faf8fc] border border-[#dfd5e8] p-3 rounded-lg text-xs space-y-1">
+                        <div className="font-bold text-[#5e3e8b] text-[11px] uppercase tracking-wide">
+                          Direct Bank Wire Transfer (NEFT / RTGS / IMPS)
+                        </div>
+                        {(quoteForm.bankName?.trim() || quoteForm.branch?.trim()) && (
+                          <div className="text-[#2e075d]">
+                            {quoteForm.bankName?.trim() && <>Bank: <span className="font-semibold">{quoteForm.bankName}</span></>}
+                            {quoteForm.bankName?.trim() && quoteForm.branch?.trim() && ' • '}
+                            {quoteForm.branch?.trim() && <>Branch: <span className="font-medium">{quoteForm.branch}</span></>}
+                          </div>
+                        )}
+                        {quoteForm.accountName?.trim() && (
+                          <div className="text-[#2e075d]">
+                            Beneficiary: <span className="font-bold">{quoteForm.accountName}</span>
+                          </div>
+                        )}
+                        {(quoteForm.accountNumber?.trim() || quoteForm.ifscCode?.trim()) && (
+                          <div className="font-mono text-[#2e075d]">
+                            {quoteForm.accountNumber?.trim() && <>A/C No: <span className="font-bold text-[#5e3e8b]">{quoteForm.accountNumber}</span></>}
+                            {quoteForm.accountNumber?.trim() && quoteForm.ifscCode?.trim() && ' • '}
+                            {quoteForm.ifscCode?.trim() && <>IFSC: <span className="font-bold text-[#5e3e8b]">{quoteForm.ifscCode}</span></>}
+                          </div>
+                        )}
                       </div>
-                      <div className="text-[#2e075d]">
-                        Bank: <span className="font-semibold">{quoteForm.bankName}</span> • Branch: <span className="font-medium">{quoteForm.branch}</span>
-                      </div>
-                      <div className="text-[#2e075d]">
-                        Beneficiary: <span className="font-bold">{quoteForm.accountName}</span>
-                      </div>
-                      <div className="font-mono text-[#2e075d]">
-                        A/C No: <span className="font-bold text-[#5e3e8b]">{quoteForm.accountNumber}</span> • IFSC: <span className="font-bold text-[#5e3e8b]">{quoteForm.ifscCode}</span>
-                      </div>
-                    </div>
+                    )}
 
-                    <div className="text-[11px] text-[#6e568b] space-y-1">
-                      <div>• <strong>Payment Terms:</strong> {quoteForm.paymentTerms}</div>
-                      <div>• <strong>Delivery Lead Time:</strong> {quoteForm.deliveryTimeline}</div>
-                      <div>• <strong>Guarantee:</strong> 12 months manufacturer warranty against casting & grinding defects.</div>
-                      {quoteForm.generalNotes && (
-                        <div>• <strong>Remarks:</strong> {quoteForm.generalNotes}</div>
-                      )}
-                    </div>
+                    {(quoteForm.paymentTerms?.trim() || quoteForm.deliveryTimeline?.trim() || quoteForm.freightTerms?.trim() || quoteForm.warrantyTerms?.trim() || quoteForm.generalNotes?.trim()) && (
+                      <div className="text-[11px] text-[#6e568b] space-y-1">
+                        {quoteForm.paymentTerms?.trim() && <div>• <strong>Payment Terms:</strong> {quoteForm.paymentTerms}</div>}
+                        {quoteForm.deliveryTimeline?.trim() && <div>• <strong>Delivery Lead Time:</strong> {quoteForm.deliveryTimeline}</div>}
+                        {quoteForm.freightTerms?.trim() && <div>• <strong>Freight & Insurance:</strong> {quoteForm.freightTerms}</div>}
+                        {quoteForm.warrantyTerms?.trim() && <div>• <strong>Guarantee:</strong> {quoteForm.warrantyTerms}</div>}
+                        {quoteForm.generalNotes?.trim() && (
+                          <div className="whitespace-pre-wrap break-words">• <strong>Remarks:</strong> {quoteForm.generalNotes}</div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Right Column: Financial Figures */}
                   <div className="md:col-span-5 space-y-2 border border-[#dfd5e8] p-4 rounded-lg bg-[#fcfbfe] text-xs">
-                    <div className="flex justify-between text-[#6e568b]">
-                      <span>Items Subtotal:</span>
-                      <span className="font-mono font-medium text-[#2e075d]">
-                        {quoteForm.currencySymbol}{quoteFinancials.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </span>
-                    </div>
+                    {(quoteFinancials.subtotal > 0 || quoteFinancials.discountTotal > 0 || quoteFinancials.taxableAmount > 0 || quoteFinancials.taxTotal > 0 || quoteFinancials.freightCharges > 0 || quoteFinancials.grandTotal > 0) && (
+                      <>
+                        <div className="flex justify-between text-[#6e568b]">
+                          <span>Items Subtotal:</span>
+                          <span className="font-mono font-medium text-[#2e075d]">
+                            {quoteForm.currencySymbol}{quoteFinancials.subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
 
-                    {quoteFinancials.discountTotal > 0 && (
-                      <div className="flex justify-between text-rose-600">
-                        <span>Total Discount:</span>
-                        <span className="font-mono font-medium">
-                          - {quoteForm.currencySymbol}{quoteFinancials.discountTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                        </span>
-                      </div>
+                        {quoteFinancials.discountTotal > 0 && (
+                          <div className="flex justify-between text-rose-600">
+                            <span>Total Discount:</span>
+                            <span className="font-mono font-medium">
+                              - {quoteForm.currencySymbol}{quoteFinancials.discountTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="flex justify-between text-[#6e568b]">
+                          <span>Taxable Value:</span>
+                          <span className="font-mono font-medium text-[#2e075d]">
+                            {quoteForm.currencySymbol}{quoteFinancials.taxableAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between text-emerald-700">
+                          <span>GST / Taxes:</span>
+                          <span className="font-mono font-medium">
+                            + {quoteForm.currencySymbol}{quoteFinancials.taxTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+
+                        {quoteFinancials.freightCharges > 0 && (
+                          <div className="flex justify-between text-[#6e568b]">
+                            <span>Freight & Handling:</span>
+                            <span className="font-mono font-medium text-[#2e075d]">
+                              {quoteForm.currencySymbol}{quoteFinancials.freightCharges.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="pt-2 border-t border-[#dfd5e8] flex justify-between items-center text-sm font-bold text-[#2e075d] bg-[#efe7f7] p-2.5 rounded">
+                          <span>TOTAL PAYABLE:</span>
+                          <span className="font-mono text-base text-[#5e3e8b]">
+                            {quoteForm.currencySymbol}{quoteFinancials.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </>
                     )}
-
-                    <div className="flex justify-between text-[#6e568b]">
-                      <span>Taxable Value:</span>
-                      <span className="font-mono font-medium text-[#2e075d]">
-                        {quoteForm.currencySymbol}{quoteFinancials.taxableAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between text-emerald-700">
-                      <span>GST / Taxes:</span>
-                      <span className="font-mono font-medium">
-                        + {quoteForm.currencySymbol}{quoteFinancials.taxTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </span>
-                    </div>
-
-                    {quoteFinancials.freightCharges > 0 && (
-                      <div className="flex justify-between text-[#6e568b]">
-                        <span>Freight & Handling:</span>
-                        <span className="font-mono font-medium text-[#2e075d]">
-                          {quoteForm.currencySymbol}{quoteFinancials.freightCharges.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    )}
-
-                    <div className="pt-2 border-t border-[#dfd5e8] flex justify-between items-center text-sm font-bold text-[#2e075d] bg-[#efe7f7] p-2.5 rounded">
-                      <span>TOTAL PAYABLE:</span>
-                      <span className="font-mono text-base text-[#5e3e8b]">
-                        {quoteForm.currencySymbol}{quoteFinancials.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </span>
-                    </div>
 
                     <div className="pt-6 text-center text-xs text-[#6e568b]">
                       <div className="font-semibold text-[#2e075d]">For PRAZTECH® ENGINEERING</div>

@@ -276,6 +276,12 @@ export interface QuotationLineItem {
   gstRate: number;
   lineTotal: number;
   image?: string;
+  productDetails?: {
+    compatibility?: string;
+    sizesDetail?: string[];
+    itemSpecifics?: Record<string, string>;
+    setIncludes?: string[];
+  };
 }
 
 export interface QuotationDetails {
@@ -285,15 +291,15 @@ export interface QuotationDetails {
   currency: string;
   currencySymbol: string;
   customer: {
-    fullName: string;
+    fullName?: string;
     company?: string;
-    email: string;
-    phone: string;
+    email?: string;
+    phone?: string;
     whatsapp?: string;
     address?: string;
-    city: string;
-    state: string;
-    country: string;
+    city?: string;
+    state?: string;
+    country?: string;
     gstin?: string;
   };
   items: QuotationLineItem[];
@@ -303,15 +309,17 @@ export interface QuotationDetails {
   taxTotal: number;
   freightCharges: number;
   grandTotal: number;
-  paymentTerms: string;
-  deliveryTimeline: string;
+  paymentTerms?: string;
+  deliveryTimeline?: string;
+  freightTerms?: string;
+  warrantyTerms?: string;
   generalNotes?: string;
   bankDetails?: {
-    bankName: string;
-    accountName: string;
-    accountNumber: string;
-    ifscCode: string;
-    branch: string;
+    bankName?: string;
+    accountName?: string;
+    accountNumber?: string;
+    ifscCode?: string;
+    branch?: string;
   };
   authorizedSignatory?: string;
 }
@@ -489,117 +497,141 @@ export const generateClientSideQuotationPDF = async (quote: QuotationDetails): P
   doc.setFontSize(10.5);
   doc.text('OFFICIAL COMMERCIAL PROFORMA QUOTATION', 105, 40.5, { align: 'center' });
 
-  // 3. Reference Strip (Identical to Quotations & RFQs PDF)
-  doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
-  doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
-  doc.setLineWidth(0.3);
-  doc.rect(startX, 45, contentWidth, 8, 'FD');
+  // 3. Reference Strip (only rendered if at least one metadata field is non-empty)
+  const hasMetadata = !!(
+    quote.quoteNumber?.trim() ||
+    quote.quoteDate?.trim() ||
+    quote.validUntil?.trim() ||
+    quote.currency?.trim()
+  );
 
-  doc.setFontSize(8.5);
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Quotation Ref: ', startX + 3, 50.2);
+  let y = 45;
 
-  doc.setTextColor(brandAccent[0], brandAccent[1], brandAccent[2]);
-  doc.text(quote.quoteNumber || 'PRZ-QT-PENDING', startX + 28, 50.2);
+  if (hasMetadata) {
+    doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
+    doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
+    doc.setLineWidth(0.3);
+    doc.rect(startX, y, contentWidth, 8, 'FD');
 
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  doc.text('Date: ', 88, 50.2);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text(quote.quoteDate || formatDateDDMMYY(Date.now()), 98, 50.2);
+    doc.setFontSize(8.5);
+    if (quote.quoteNumber?.trim()) {
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Quotation Ref: ', startX + 3, y + 5.2);
+      doc.setTextColor(brandAccent[0], brandAccent[1], brandAccent[2]);
+      doc.text(quote.quoteNumber.trim(), startX + 28, y + 5.2);
+    }
 
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  doc.text('Valid: ', 128, 50.2);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text(quote.validUntil || '30 Days', 138, 50.2);
+    if (quote.quoteDate?.trim()) {
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text('Date: ', 88, y + 5.2);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+      doc.text(quote.quoteDate.trim(), 98, y + 5.2);
+    }
 
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  doc.text('Currency: ', 166, 50.2);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-  doc.text(`${quote.currency || 'INR'}`, 181, 50.2);
+    if (quote.validUntil?.trim()) {
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text('Valid: ', 128, y + 5.2);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+      doc.text(quote.validUntil.trim(), 138, y + 5.2);
+    }
 
-  // 4. Buyer / Consignee Details Box (Zero overlap with Reference Strip above)
-  let y = 58;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-  doc.text('BUYER / CONSIGNEE DETAILS', startX, y);
+    if (quote.currency?.trim()) {
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text('Currency: ', 166, y + 5.2);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
+      doc.text(quote.currency.trim(), 181, y + 5.2);
+    }
 
-  y += 3;
-  const custBoxHeight = 25;
-  doc.setFillColor(255, 255, 255);
-  doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
-  doc.rect(startX, y, contentWidth, custBoxHeight, 'D');
+    y += 13;
+  }
 
-  doc.setFontSize(7.8);
-  const col1LabelX = startX + 3;
-  const col1ValX = startX + 24;
-  const col2LabelX = startX + 96;
-  const col2ValX = startX + 114;
+  // 4. Buyer / Consignee Details Box (removed if all customer fields are empty)
+  const cust = quote.customer || ({} as QuotationDetails['customer']);
+  const locationStr = [cust.address, cust.city, cust.state, cust.country]
+    .map(s => (s || '').trim())
+    .filter(Boolean)
+    .join(', ');
+  const phoneVal = (cust.phone || cust.whatsapp || '').trim();
+  const hasCustomerDetails = !!(
+    cust.fullName?.trim() ||
+    cust.company?.trim() ||
+    cust.email?.trim() ||
+    phoneVal ||
+    locationStr ||
+    cust.gstin?.trim()
+  );
 
-  const cust = quote.customer || ({} as any);
+  if (hasCustomerDetails) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
+    doc.text('BUYER / CONSIGNEE DETAILS', startX, y);
 
-  // Row 1
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  doc.text('Customer:', col1LabelX, y + 5.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text(cust.fullName || '—', col1ValX, y + 5.5);
+    y += 3;
+    const leftEntries: Array<{ label: string; value: string }> = [];
+    if (cust.fullName?.trim()) leftEntries.push({ label: 'Customer:', value: cust.fullName.trim() });
+    if (cust.company?.trim()) leftEntries.push({ label: 'Company:', value: cust.company.trim() });
+    if (locationStr) leftEntries.push({ label: 'Address:', value: locationStr });
 
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  doc.text('Email:', col2LabelX, y + 5.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text(cust.email || '—', col2ValX, y + 5.5);
+    const rightEntries: Array<{ label: string; value: string }> = [];
+    if (cust.email?.trim()) rightEntries.push({ label: 'Email:', value: cust.email.trim() });
+    if (phoneVal) rightEntries.push({ label: 'Phone:', value: phoneVal });
+    if (cust.gstin?.trim()) rightEntries.push({ label: 'GSTIN:', value: cust.gstin.trim() });
 
-  // Row 2
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  doc.text('Company:', col1LabelX, y + 11.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text(cust.company || 'Direct Workshop / Individual', col1ValX, y + 11.5);
+    const maxRows = Math.max(leftEntries.length, rightEntries.length, 1);
+    const custBoxHeight = Math.max(12, maxRows * 6 + 6);
 
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  doc.text('Phone:', col2LabelX, y + 11.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text(cust.phone || cust.whatsapp || '—', col2ValX, y + 11.5);
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
+    doc.rect(startX, y, contentWidth, custBoxHeight, 'D');
 
-  // Row 3
-  const locationStr = [cust.address, cust.city, cust.state, cust.country].filter(Boolean).join(', ') || 'India';
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  doc.text('Address:', col1LabelX, y + 17.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text(locationStr.slice(0, 52), col1ValX, y + 17.5);
+    doc.setFontSize(7.8);
+    const col1LabelX = startX + 3;
+    const col1ValX = startX + 24;
+    const col2LabelX = startX + 96;
+    const col2ValX = startX + 114;
 
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  doc.text('GSTIN:', col2LabelX, y + 17.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text(cust.gstin || 'Unregistered / Not Provided', col2ValX, y + 17.5);
+    leftEntries.forEach((entry, i) => {
+      const rowY = y + 5.5 + i * 6;
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(entry.label, col1LabelX, rowY);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+      doc.text(entry.value, col1ValX, rowY, { maxWidth: 68 });
+    });
 
-  // 5. Items Table with Product Photos
-  y += custBoxHeight + 6;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-  doc.text('SCHEDULE OF TOOLING PRODUCTS & RATES', startX, y);
+    rightEntries.forEach((entry, i) => {
+      const rowY = y + 5.5 + i * 6;
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(entry.label, col2LabelX, rowY);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+      doc.text(entry.value, col2ValX, rowY, { maxWidth: 64 });
+    });
 
-  y += 3;
+    y += custBoxHeight + 6;
+  }
+
+  // 5. Items Table with Product Photos (removed if no non-empty items)
+  const activeItems = (quote.items || []).filter(
+    it =>
+      it.modelNo?.trim() ||
+      it.name?.trim() ||
+      it.selectedVariant?.trim() ||
+      it.notes?.trim() ||
+      Number(it.unitPrice) > 0
+  );
+
   const thHeight = 6.5;
-
   const colNo = startX + 2;        // 16
   const colPhoto = startX + 8;     // 22
   const colModel = startX + 24;    // 38
@@ -628,94 +660,131 @@ export const generateClientSideQuotationPDF = async (quote: QuotationDetails): P
     doc.text(`Total (${currencySym.trim()})`, colAmount, curY + 4.5, { align: 'right' });
   };
 
-  drawTableHeader(y);
-  y += thHeight;
+  if (activeItems.length > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
+    doc.text('SCHEDULE OF TOOLING PRODUCTS & RATES', startX, y);
 
-  // Table Body Rows
-  const rowHeight = 15;
-  const photoSize = 12;
+    y += 3;
+    drawTableHeader(y);
+    y += thHeight;
 
-  for (let idx = 0; idx < quote.items.length; idx++) {
-    const it = quote.items[idx];
-    const imgData = itemImages[idx];
+    const photoSize = 12;
 
-    if (y + rowHeight > 220) {
-      doc.addPage();
-      y = 20;
-      drawTableHeader(y);
-      y += thHeight;
-    }
+    for (let idx = 0; idx < activeItems.length; idx++) {
+      const it = activeItems[idx];
+      const origIdx = quote.items.indexOf(it);
+      const imgData = origIdx >= 0 ? itemImages[origIdx] : null;
 
-    const isEven = (idx + 1) % 2 === 0;
-    if (isEven) {
-      doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
-      doc.rect(startX, y, contentWidth, rowHeight, 'F');
-    }
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.2);
+      const descParagraphs: string[] = [];
+      if (it.name?.trim()) descParagraphs.push(it.name.trim());
+      if (it.selectedVariant?.trim()) descParagraphs.push(`Option: ${it.selectedVariant.trim()}`);
+      if (it.notes?.trim()) descParagraphs.push(`Note: ${it.notes.trim()}`);
+      if (it.productDetails) {
+        if (it.productDetails.compatibility?.trim()) {
+          descParagraphs.push(`Compatibility: ${it.productDetails.compatibility.trim()}`);
+        }
+        if (it.productDetails.sizesDetail && it.productDetails.sizesDetail.length > 0) {
+          descParagraphs.push(`Sizes: ${it.productDetails.sizesDetail.join(', ')}`);
+        }
+        if (it.productDetails.itemSpecifics && Object.keys(it.productDetails.itemSpecifics).length > 0) {
+          const specsStr = Object.entries(it.productDetails.itemSpecifics)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(' | ');
+          descParagraphs.push(`Specs: ${specsStr}`);
+        }
+        if (it.productDetails.setIncludes && it.productDetails.setIncludes.length > 0) {
+          descParagraphs.push(`Includes: ${it.productDetails.setIncludes.join(', ')}`);
+        }
+      }
+      const descLines: string[] =
+        descParagraphs.length > 0
+          ? descParagraphs.flatMap(p => doc.splitTextToSize(p, 52) as string[])
+          : ['—'];
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.2);
+      const sku = it.modelNo?.trim() || '—';
+      const skuLines: string[] = doc.splitTextToSize(sku, 22);
+      const rowHeight = Math.max(15, Math.max(descLines.length, skuLines.length) * 3.4 + 6);
 
-    doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
-    doc.line(startX, y + rowHeight, startX + contentWidth, y + rowHeight);
+      if (y + rowHeight > 220) {
+        doc.addPage();
+        y = 20;
+        drawTableHeader(y);
+        y += thHeight;
+      }
 
-    // Index
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-    doc.text(String(idx + 1), colNo, y + 8);
+      const isEven = (idx + 1) % 2 === 0;
+      if (isEven) {
+        doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
+        doc.rect(startX, y, contentWidth, rowHeight, 'F');
+      }
 
-    // Product Photo Box
-    const pX = colPhoto - 1;
-    const pY = y + 1.5;
-    doc.setFillColor(255, 255, 255);
-    doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
-    doc.rect(pX, pY, photoSize, photoSize, 'FD');
+      doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
+      doc.line(startX, y + rowHeight, startX + contentWidth, y + rowHeight);
 
-    if (imgData) {
-      try {
-        doc.addImage(imgData, 'JPEG', pX + 0.5, pY + 0.5, photoSize - 1, photoSize - 1);
-      } catch {
+      // Index
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(String(idx + 1), colNo, y + 8);
+
+      // Product Photo Box
+      const pX = colPhoto - 1;
+      const pY = y + 1.5;
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
+      doc.rect(pX, pY, photoSize, photoSize, 'FD');
+
+      if (imgData) {
+        try {
+          doc.addImage(imgData, 'JPEG', pX + 0.5, pY + 0.5, photoSize - 1, photoSize - 1);
+        } catch {
+          doc.setFontSize(6);
+          doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+          doc.text('Photo', pX + photoSize / 2, pY + 7, { align: 'center' });
+        }
+      } else {
         doc.setFontSize(6);
         doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-        doc.text('Photo', pX + photoSize / 2, pY + 7, { align: 'center' });
+        doc.text(it.isCustom ? 'Custom' : 'Tool', pX + photoSize / 2, pY + 7, { align: 'center' });
       }
-    } else {
-      doc.setFontSize(6);
-      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-      doc.text(it.isCustom ? 'Custom' : 'Tool', pX + photoSize / 2, pY + 7, { align: 'center' });
+
+      // Model / SKU (wrapped within 22mm column width so it never overlaps Description)
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.2);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(skuLines, colModel, y + 6);
+
+      // Description & Technical Details (wrapped cleanly, never cut off)
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.2);
+      doc.text(descLines, colDesc, y + 6);
+
+      // Quantity
+      doc.setFont('helvetica', 'bold');
+      doc.text(String(it.quantity || 1), colQty, y + 8, { align: 'center' });
+
+      // Unit Rate
+      doc.setFont('helvetica', 'normal');
+      doc.text(Number(it.unitPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }), colRate, y + 8, { align: 'right' });
+
+      // Discount %
+      doc.text(it.discountPercent ? `${it.discountPercent}%` : '—', colDisc, y + 8, { align: 'center' });
+
+      // GST %
+      doc.text(it.gstRate ? `${it.gstRate}%` : '0%', colGst, y + 8, { align: 'center' });
+
+      // Total Amount
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
+      doc.text(Number(it.lineTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }), colAmount, y + 8, { align: 'right' });
+
+      y += rowHeight;
     }
-
-    // Model / SKU
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-    const sku = it.modelNo || (it.isCustom ? 'CUSTOM-TOOL' : 'STANDARD');
-    doc.text(sku.slice(0, 16), colModel, y + 6);
-
-    // Description & Technical Details
-    doc.setFont('helvetica', 'normal');
-    let desc = it.name || 'Industrial Tooling Unit';
-    if (it.selectedVariant) desc += ` (${it.selectedVariant})`;
-    if (it.notes) desc += ` • ${it.notes}`;
-    doc.text(desc.slice(0, 44), colDesc, y + 6, { maxWidth: 50 });
-
-    // Quantity
-    doc.setFont('helvetica', 'bold');
-    doc.text(String(it.quantity || 1), colQty, y + 8, { align: 'center' });
-
-    // Unit Rate
-    doc.setFont('helvetica', 'normal');
-    doc.text(Number(it.unitPrice || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }), colRate, y + 8, { align: 'right' });
-
-    // Discount %
-    doc.text(it.discountPercent ? `${it.discountPercent}%` : '—', colDisc, y + 8, { align: 'center' });
-
-    // GST %
-    doc.text(it.gstRate ? `${it.gstRate}%` : '0%', colGst, y + 8, { align: 'center' });
-
-    // Total Amount
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-    doc.text(Number(it.lineTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }), colAmount, y + 8, { align: 'right' });
-
-    y += rowHeight;
   }
 
   // 6. Summary Totals & Commercial Terms Section
@@ -729,119 +798,177 @@ export const generateClientSideQuotationPDF = async (quote: QuotationDetails): P
   const summaryBoxX = startX + contentWidth - summaryBoxWidth;
   const termsBoxWidth = contentWidth - summaryBoxWidth - 6;
 
-  // Left Side: Terms, Bank Details, and Amount in Words
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-  doc.text('AMOUNT IN WORDS:', startX, y + 3);
+  // Left Side: Amount in Words, Bank Details, and Commercial Terms
+  let leftY = y;
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  const wordsText = amountToWords(quote.grandTotal, quote.currency);
-  doc.text(wordsText, startX, y + 7.5, { maxWidth: termsBoxWidth });
+  if (Number(quote.grandTotal) > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
+    doc.text('AMOUNT IN WORDS:', startX, leftY + 3);
 
-  // Bank Transfer Details Box
-  const bankY = y + 14;
-  doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
-  doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
-  doc.rect(startX, bankY, termsBoxWidth, 23, 'FD');
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-  doc.text('BANK DETAILS FOR DIRECT REMITTANCE / RTGS / NEFT:', startX + 3, bankY + 4.5);
-
-  const bank = quote.bankDetails || {
-    bankName: 'HDFC Bank Ltd',
-    accountName: 'PRAZTECH ENGINEERING',
-    accountNumber: '50200084729103',
-    ifscCode: 'HDFC0000123',
-    branch: 'New Delhi Branch'
-  };
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-  doc.text(`Bank: ${bank.bankName} | Branch: ${bank.branch}`, startX + 3, bankY + 9.5);
-  doc.text(`A/C Name: ${bank.accountName}`, startX + 3, bankY + 14);
-  doc.text(`A/C No: ${bank.accountNumber} | IFSC Code: ${bank.ifscCode}`, startX + 3, bankY + 18.5);
-
-  // Terms & Conditions below Bank Details
-  const termsY = bankY + 26;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-  doc.text('COMMERCIAL TERMS & NOTES:', startX, termsY + 3.5);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.8);
-  doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text(`• Payment Terms: ${quote.paymentTerms || '50% advance, balance against dispatch invoice'}`, startX, termsY + 8);
-  doc.text(`• Delivery / Lead Time: ${quote.deliveryTimeline || 'Ex-stock / 3-5 business days from order confirmation'}`, startX, termsY + 12);
-  doc.text('• Freight & Insurance: Borne by consignee unless explicitly itemized above.', startX, termsY + 16);
-  if (quote.generalNotes) {
-    doc.text(`• Note: ${quote.generalNotes.slice(0, 95)}`, startX, termsY + 20);
-  }
-
-  // Right Side: Financial Breakdown Box
-  doc.setFillColor(255, 255, 255);
-  doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
-  doc.rect(summaryBoxX, y, summaryBoxWidth, 48, 'D');
-
-  const sumLabelX = summaryBoxX + 4;
-  const sumValX = summaryBoxX + summaryBoxWidth - 4;
-  let sumY = y + 5;
-
-  const drawSummaryRow = (label: string, value: number, isMinus = false) => {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(textDark[0], textDark[1], textDark[2]);
-    doc.text(label, sumLabelX, sumY);
-
-    const valStr = `${isMinus ? '- ' : ''}${currencySym}${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
-    doc.text(valStr, sumValX, sumY, { align: 'right' });
-    sumY += 5.5;
-  };
-
-  drawSummaryRow('Items Subtotal:', quote.subtotal);
-  if (quote.discountTotal > 0) {
-    drawSummaryRow('Total Discount:', quote.discountTotal, true);
-  }
-  drawSummaryRow('Taxable Amount:', quote.taxableAmount);
-  drawSummaryRow('GST / Tax Amount:', quote.taxTotal);
-  if (quote.freightCharges > 0) {
-    drawSummaryRow('Freight & Packaging:', quote.freightCharges);
+    const wordsText = amountToWords(quote.grandTotal, quote.currency);
+    const wordsLines: string[] = doc.splitTextToSize(wordsText, termsBoxWidth);
+    doc.text(wordsLines, startX, leftY + 7.5);
+    leftY += 7.5 + wordsLines.length * 3.8 + 3;
   }
 
-  // Grand Total Highlight Bar
-  sumY += 1;
-  doc.setFillColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-  doc.rect(summaryBoxX, sumY - 3, summaryBoxWidth, 9, 'F');
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.text('GRAND TOTAL:', sumLabelX, sumY + 2.8);
-  doc.text(
-    `${currencySym}${Number(quote.grandTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,
-    sumValX,
-    sumY + 2.8,
-    { align: 'right' }
+  // Bank Transfer Details Box (removed if all bank fields are empty)
+  const bank = quote.bankDetails || {};
+  const hasBankDetails = !!(
+    bank.bankName?.trim() ||
+    bank.branch?.trim() ||
+    bank.accountName?.trim() ||
+    bank.accountNumber?.trim() ||
+    bank.ifscCode?.trim()
   );
 
-  // Authorized Signatory Box on Right
-  const signY = sumY + 14;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
-  doc.text('For PRAZTECH® ENGINEERING', sumLabelX + 8, signY);
+  if (hasBankDetails) {
+    const bankLines: string[] = [];
+    const bankBranch = [
+      bank.bankName?.trim() ? `Bank: ${bank.bankName.trim()}` : '',
+      bank.branch?.trim() ? `Branch: ${bank.branch.trim()}` : ''
+    ].filter(Boolean).join(' | ');
+    if (bankBranch) bankLines.push(bankBranch);
+    if (bank.accountName?.trim()) bankLines.push(`A/C Name: ${bank.accountName.trim()}`);
+    const acIfsc = [
+      bank.accountNumber?.trim() ? `A/C No: ${bank.accountNumber.trim()}` : '',
+      bank.ifscCode?.trim() ? `IFSC Code: ${bank.ifscCode.trim()}` : ''
+    ].filter(Boolean).join(' | ');
+    if (acIfsc) bankLines.push(acIfsc);
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
-  doc.text('[ Authorized Signatory ]', sumLabelX + 15, signY + 12);
-  doc.text('Commercial Sales Desk', sumLabelX + 14, signY + 16);
+    const bankBoxHeight = Math.max(14, bankLines.length * 4.5 + 8.5);
+    doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
+    doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
+    doc.rect(startX, leftY, termsBoxWidth, bankBoxHeight, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
+    doc.text('BANK DETAILS FOR DIRECT REMITTANCE / RTGS / NEFT:', startX + 3, leftY + 4.5);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+    bankLines.forEach((line, idx) => {
+      doc.text(line, startX + 3, leftY + 9.5 + idx * 4.5);
+    });
+
+    leftY += bankBoxHeight + 4;
+  }
+
+  // Commercial Terms & Notes (removed if all fields are empty; full text wrapped without truncation)
+  const commercialLines: string[] = [];
+  if (quote.paymentTerms?.trim()) commercialLines.push(`• Payment Terms: ${quote.paymentTerms.trim()}`);
+  if (quote.deliveryTimeline?.trim()) commercialLines.push(`• Delivery / Lead Time: ${quote.deliveryTimeline.trim()}`);
+  if (quote.freightTerms?.trim()) commercialLines.push(`• Freight & Insurance: ${quote.freightTerms.trim()}`);
+  if (quote.warrantyTerms?.trim()) commercialLines.push(`• Warranty / Guarantee: ${quote.warrantyTerms.trim()}`);
+  if (quote.generalNotes?.trim()) commercialLines.push(`• Note: ${quote.generalNotes.trim()}`);
+
+  if (commercialLines.length > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
+    doc.text('COMMERCIAL TERMS & NOTES:', startX, leftY + 3.5);
+    leftY += 8;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.8);
+    doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+
+    for (const rawLine of commercialLines) {
+      const wrapped: string[] = doc.splitTextToSize(rawLine, termsBoxWidth);
+      for (const wLine of wrapped) {
+        if (leftY > 272) {
+          doc.addPage();
+          leftY = 20;
+        }
+        doc.text(wLine, startX, leftY);
+        leftY += 3.8;
+      }
+      leftY += 0.6;
+    }
+  }
+
+  // Right Side: Financial Breakdown Box (removed if all amounts are zero)
+  const hasFinancials =
+    Number(quote.subtotal) > 0 ||
+    Number(quote.discountTotal) > 0 ||
+    Number(quote.taxableAmount) > 0 ||
+    Number(quote.taxTotal) > 0 ||
+    Number(quote.freightCharges) > 0 ||
+    Number(quote.grandTotal) > 0;
+
+  let sumY = y + 5;
+  if (hasFinancials) {
+    const rowCount =
+      3 +
+      (Number(quote.discountTotal) > 0 ? 1 : 0) +
+      (Number(quote.freightCharges) > 0 ? 1 : 0);
+    const finBoxHeight = Math.max(32, rowCount * 5.5 + 15);
+
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
+    doc.rect(summaryBoxX, y, summaryBoxWidth, finBoxHeight, 'D');
+
+    const sumLabelX = summaryBoxX + 4;
+    const sumValX = summaryBoxX + summaryBoxWidth - 4;
+
+    const drawSummaryRow = (label: string, value: number, isMinus = false) => {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(textDark[0], textDark[1], textDark[2]);
+      doc.text(label, sumLabelX, sumY);
+
+      const valStr = `${isMinus ? '- ' : ''}${currencySym}${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+      doc.text(valStr, sumValX, sumY, { align: 'right' });
+      sumY += 5.5;
+    };
+
+    drawSummaryRow('Items Subtotal:', quote.subtotal);
+    if (quote.discountTotal > 0) {
+      drawSummaryRow('Total Discount:', quote.discountTotal, true);
+    }
+    drawSummaryRow('Taxable Amount:', quote.taxableAmount);
+    drawSummaryRow('GST / Tax Amount:', quote.taxTotal);
+    if (quote.freightCharges > 0) {
+      drawSummaryRow('Freight & Packaging:', quote.freightCharges);
+    }
+
+    // Grand Total Highlight Bar
+    sumY += 1;
+    doc.setFillColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
+    doc.rect(summaryBoxX, sumY - 3, summaryBoxWidth, 9, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.text('GRAND TOTAL:', sumLabelX, sumY + 2.8);
+    doc.text(
+      `${currencySym}${Number(quote.grandTotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,
+      sumValX,
+      sumY + 2.8,
+      { align: 'right' }
+    );
+  }
+
+  // Authorized Signatory Box on Right
+  const signY = (hasFinancials ? sumY + 14 : y + 8);
+  if (signY < 260) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(brandPrimary[0], brandPrimary[1], brandPrimary[2]);
+    doc.text('For PRAZTECH® ENGINEERING', summaryBoxX + 12, signY);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(textMuted[0], textMuted[1], textMuted[2]);
+    doc.text('[ Authorized Signatory ]', summaryBoxX + 19, signY + 12);
+    doc.text('Commercial Sales Desk', summaryBoxX + 18, signY + 16);
+  }
 
   // Footer Disclaimer - Explicitly mentioning the official website
   doc.setDrawColor(borderLight[0], borderLight[1], borderLight[2]);
